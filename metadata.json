@@ -1,0 +1,5 @@
+{
+  "name": "BellezaSana PWA",
+  "description": "A Progressive Web App for clients of the BellezaSana aesthetic center to book and manage their appointments autonomously.",
+  "requestFramePermissions": []
+}
