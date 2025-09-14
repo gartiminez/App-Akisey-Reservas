@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { MOCK_APPOINTMENTS, MOCK_VOUCHERS, MOCK_SERVICES, MOCK_PROFESSIONALS } from '../data/mockData';
@@ -13,6 +12,7 @@ const ProfilePage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('appointments');
   const navigate = useNavigate();
   const { setService } = useBooking();
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -20,11 +20,55 @@ const ProfilePage: React.FC = () => {
     }
   }, [isLoggedIn, navigate]);
 
+  useEffect(() => {
+    // Check for notification support and set initial permission state
+    if ('Notification' in window) {
+        setNotificationPermission(Notification.permission);
+    }
+  }, []);
+
   const { upcomingAppointments, pastAppointments } = useMemo(() => {
     const upcoming = MOCK_APPOINTMENTS.filter(a => a.status === 'upcoming').sort((a,b) => a.start.getTime() - b.start.getTime());
     const past = MOCK_APPOINTMENTS.filter(a => a.status !== 'upcoming').sort((a,b) => b.start.getTime() - a.start.getTime());
     return { upcomingAppointments: upcoming, pastAppointments: past };
   }, []);
+
+  // Effect to schedule notifications
+  useEffect(() => {
+    if (notificationPermission === 'granted' && upcomingAppointments.length > 0) {
+        upcomingAppointments.forEach(appt => {
+            const service = MOCK_SERVICES.find(s => s.id === appt.serviceId);
+            if (!service) return;
+
+            const reminderTime = new Date(appt.start.getTime() - 24 * 60 * 60 * 1000);
+            const now = new Date();
+            const scheduledKey = `notification_scheduled_${appt.id}`;
+
+            // Check if reminder is in the future and not already scheduled
+            if (reminderTime > now && !localStorage.getItem(scheduledKey)) {
+                const delay = reminderTime.getTime() - now.getTime();
+
+                setTimeout(() => {
+                    new Notification('Recordatorio de Cita - BellezaSana', {
+                        body: `No te olvides de tu cita para "${service.name}" mañana a las ${appt.start.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}.`,
+                        icon: '/favicon.svg',
+                        tag: appt.id 
+                    });
+                    localStorage.removeItem(scheduledKey);
+                }, delay);
+
+                localStorage.setItem(scheduledKey, 'true');
+            }
+        });
+    }
+  }, [upcomingAppointments, notificationPermission]);
+
+  const requestNotificationPermission = async () => {
+    if ('Notification' in window) {
+        const permission = await Notification.requestPermission();
+        setNotificationPermission(permission);
+    }
+  };
 
   const handleBookFromVoucher = (voucher: Voucher) => {
     const serviceToBook = MOCK_SERVICES.find(s => s.id === voucher.serviceId);
@@ -38,6 +82,32 @@ const ProfilePage: React.FC = () => {
     return null; // Or a loading spinner
   }
 
+  const NotificationSettings = (
+    <div className="bg-white p-6 rounded-lg shadow-md mb-8">
+      <h2 className="text-2xl font-bold text-secondary mb-4">Recordatorios de Citas</h2>
+      {notificationPermission === 'granted' && (
+        <p className="text-green-600">Los recordatorios por notificación están activados.</p>
+      )}
+      {notificationPermission === 'denied' && (
+        <div>
+          <p className="text-red-600">Has bloqueado las notificaciones.</p>
+          <p className="text-sm text-light-text">Para activarlas, debes cambiar los permisos en la configuración de tu navegador.</p>
+        </div>
+      )}
+      {notificationPermission === 'default' && (
+        <div>
+            <p className="text-light-text mb-4">¿Quieres recibir un recordatorio 24 horas antes de tu cita?</p>
+            <button
+                onClick={requestNotificationPermission}
+                className="bg-secondary text-white px-5 py-2.5 rounded-lg font-semibold hover:bg-opacity-90 transition-colors"
+            >
+                Activar Recordatorios
+            </button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
@@ -49,6 +119,9 @@ const ProfilePage: React.FC = () => {
             Cerrar Sesión
         </button>
       </div>
+      
+      {/* Notification Settings */}
+      {NotificationSettings}
       
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-8">
