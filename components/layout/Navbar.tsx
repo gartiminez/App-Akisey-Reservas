@@ -19,7 +19,7 @@ const Navbar: React.FC = () => {
 
     return (
         <>
-            <header className="fixed bottom-0 left-0 right-0 md:sticky md:top-0 bg-white z-50 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] md:shadow-md">
+            <header className="bg-white z-50 shadow-md">
                 <nav className="container mx-auto px-4 h-20 flex justify-between items-center">
                     <NavLink to="/" className="text-3xl font-bold text-secondary">
                         Belleza<span className="text-primary">Sana</span>

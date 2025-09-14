@@ -30,6 +30,10 @@ const BookingPage: React.FC = () => {
     const [currentStep, setCurrentStep] = useState(1);
     const { bookingState, setService, setProfessional, setDateTime, resetBooking } = useBooking();
     const navigate = useNavigate();
+    
+    // --- State for Step 1: Service Selection ---
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState('Todos');
 
     // --- State for Step 3: Date & Time Selection ---
     type SearchMode = 'date' | 'timeRange';
@@ -52,6 +56,19 @@ const BookingPage: React.FC = () => {
     }
     const [foundSlotsByRange, setFoundSlotsByRange] = useState<FoundSlot[]>([]);
     const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+
+    // --- Memoized values for filtering ---
+    const categories = useMemo(() => 
+        ['Todos', ...new Set(MOCK_SERVICES.map(s => s.category))]
+    , []);
+
+    const filteredServices = useMemo(() => {
+        return MOCK_SERVICES.filter(service => {
+        const matchesCategory = selectedCategory === 'Todos' || service.category === selectedCategory;
+        const matchesSearch = service.name.toLowerCase().includes(searchTerm.toLowerCase());
+        return matchesCategory && matchesSearch;
+        });
+    }, [searchTerm, selectedCategory]);
 
 
     useEffect(() => {
@@ -191,14 +208,38 @@ const BookingPage: React.FC = () => {
                 {currentStep === 1 && (
                     <div>
                         <h2 className="text-2xl font-bold text-secondary mb-6">1. Selecciona un Servicio</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {MOCK_SERVICES.map(service => (
-                                <button key={service.id} onClick={() => handleSelectService(service)} className="text-left p-4 border rounded-lg hover:bg-primary hover:text-white transition-colors hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary">
-                                    <h3 className="font-semibold">{service.name}</h3>
-                                    <p className="text-sm">{service.price}€ - {service.duration} min</p>
-                                </button>
-                            ))}
+                        
+                        <div className="mb-6 flex flex-col sm:flex-row gap-4">
+                            <input
+                                type="text"
+                                placeholder="Buscar por nombre..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full sm:w-1/2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
+                            />
+                            <select
+                                value={selectedCategory}
+                                onChange={(e) => setSelectedCategory(e.target.value)}
+                                className="w-full sm:w-1/2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition bg-white"
+                            >
+                                {categories.map(category => (
+                                    <option key={category} value={category}>{category}</option>
+                                ))}
+                            </select>
                         </div>
+
+                        {filteredServices.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {filteredServices.map(service => (
+                                    <button key={service.id} onClick={() => handleSelectService(service)} className="text-left p-4 border rounded-lg hover:bg-primary hover:text-white transition-colors hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary">
+                                        <h3 className="font-semibold">{service.name}</h3>
+                                        <p className="text-sm">{service.price}€ - {service.duration} min</p>
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-center text-light-text py-8">No se encontraron servicios que coincidan con tu búsqueda.</p>
+                        )}
                     </div>
                 )}
 
