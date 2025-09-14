@@ -38,24 +38,32 @@ const ServicesPage: React.FC = () => {
       </div>
 
       {/* Filters */}
-      <div className="mb-8 flex flex-col md:flex-row gap-4">
+      <div className="mb-8 space-y-6">
         <input
           type="text"
           placeholder="Buscar servicio..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full md:w-1/2 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
         />
-        <select
-          value={selectedCategory}
-          onChange={(e) => setSelectedCategory(e.target.value)}
-          className="w-full md:w-1/2 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition bg-white"
-        >
+        
+        <div className="flex space-x-3 overflow-x-auto pb-3 -mx-4 px-4">
           {categories.map(category => (
-            <option key={category} value={category}>{category}</option>
+            <button
+              key={category}
+              onClick={() => setSelectedCategory(category)}
+              className={`flex-shrink-0 px-5 py-2 rounded-full font-semibold text-base whitespace-nowrap transition-colors duration-200 border-2 ${
+                selectedCategory === category
+                  ? 'bg-primary text-white border-primary'
+                  : 'bg-white text-secondary border-gray-300 hover:bg-gray-100 hover:border-gray-400'
+              }`}
+            >
+              {category}
+            </button>
           ))}
-        </select>
+        </div>
       </div>
+
 
       {/* Service List */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
