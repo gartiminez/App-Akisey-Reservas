@@ -168,7 +168,7 @@ const BookingPage: React.FC = () => {
         { key: 'any', label: 'Cualquier hora' },
         { key: 'morning', label: 'Mañana' },
         { key: 'afternoon', label: 'Tarde' },
-        { key: 'custom', label: 'Elegir...' },
+        { key: 'custom', label: 'Elegir Horas' },
     ];
 
     // Auto-adjust end time if start time becomes >= end time
