@@ -1,8 +1,7 @@
-
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { HomeIcon, SparklesIcon, CalendarIcon, UserCircleIcon } from '../icons';
+import { HomeIcon, SparklesIcon, CalendarIcon, UserCircleIcon, PhoneIcon } from '../icons';
 import LoginModal from '../auth/LoginModal';
 
 const Navbar: React.FC = () => {
@@ -28,6 +27,7 @@ const Navbar: React.FC = () => {
                          <NavLink to="/" className={({ isActive }) => isActive ? 'text-primary font-semibold' : 'text-gray-600 hover:text-primary'}>Inicio</NavLink>
                          <NavLink to="/servicios" className={({ isActive }) => isActive ? 'text-primary font-semibold' : 'text-gray-600 hover:text-primary'}>Servicios</NavLink>
                          <NavLink to="/reservar" className={({ isActive }) => isActive ? 'text-primary font-semibold' : 'text-gray-600 hover:text-primary'}>Reservar</NavLink>
+                         <NavLink to="/contacto" className={({ isActive }) => isActive ? 'text-primary font-semibold' : 'text-gray-600 hover:text-primary'}>Contacto</NavLink>
                     </div>
                     {isLoggedIn ? (
                          <NavLink to="/perfil" className="hidden md:flex items-center space-x-2 text-gray-600 hover:text-primary">
@@ -56,6 +56,10 @@ const Navbar: React.FC = () => {
                      <NavLink to="/reservar" className={({ isActive }) => isActive ? activeLinkClasses : linkClasses}>
                         <CalendarIcon className="w-7 h-7 mb-1" />
                         <span className="text-xs">Reservar</span>
+                    </NavLink>
+                    <NavLink to="/contacto" className={({ isActive }) => isActive ? activeLinkClasses : linkClasses}>
+                        <PhoneIcon className="w-7 h-7 mb-1" />
+                        <span className="text-xs">Contacto</span>
                     </NavLink>
                     {isLoggedIn ? (
                          <NavLink to="/perfil" className={({ isActive }) => isActive ? activeLinkClasses : linkClasses}>
