@@ -1,15 +1,18 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { MOCK_APPOINTMENTS, MOCK_VOUCHERS, MOCK_SERVICES, MOCK_PROFESSIONALS } from '../data/mockData';
-import { Appointment, Voucher } from '../types';
+import { Appointment, Voucher, Client } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { useBooking } from '../context/BookingContext';
 import CancelConfirmationModal from '../components/profile/CancelConfirmationModal';
+import EditProfileForm from '../components/profile/EditProfileForm';
+import { PencilIcon, EnvelopeIcon, PhoneIcon, UserCircleIcon } from '../components/icons';
+
 
 type Tab = 'appointments' | 'vouchers';
 
 const ProfilePage: React.FC = () => {
-  const { user, isLoggedIn, logout } = useAuth();
+  const { user, isLoggedIn, logout, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('appointments');
   const navigate = useNavigate();
   const { setService, setAppointmentToEdit } = useBooking();
@@ -20,6 +23,8 @@ const ProfilePage: React.FC = () => {
     isOpen: false,
     appointment: null,
   });
+
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
 
 
   useEffect(() => {
@@ -97,6 +102,12 @@ const ProfilePage: React.FC = () => {
         setCancelModalState({ isOpen: false, appointment: null });
     }
   };
+  
+  const handleSaveProfile = (updatedDetails: { fullName: string; phone: string; email: string }) => {
+    updateUser(updatedDetails);
+    setIsEditingProfile(false);
+  };
+
 
   const handleBookFromVoucher = (voucher: Voucher) => {
     const serviceToBook = MOCK_SERVICES.find(s => s.id === voucher.serviceId);
@@ -109,6 +120,41 @@ const ProfilePage: React.FC = () => {
   if (!user) {
     return null; 
   }
+
+  const ProfileDetails = (
+    <div className="bg-white p-6 rounded-lg shadow-md mb-8">
+        <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-bold text-secondary">Mis Datos</h2>
+            {!isEditingProfile && (
+                <button
+                    onClick={() => setIsEditingProfile(true)}
+                    className="flex items-center space-x-2 text-sm text-gray-600 font-semibold py-2 px-4 rounded-lg border border-gray-300 hover:bg-gray-100 transition-colors"
+                >
+                    <PencilIcon className="w-4 h-4" />
+                    <span>Editar</span>
+                </button>
+            )}
+        </div>
+        {isEditingProfile ? (
+            <EditProfileForm user={user} onSave={handleSaveProfile} onCancel={() => setIsEditingProfile(false)} />
+        ) : (
+            <div className="space-y-4 text-secondary">
+                 <div className="flex items-center space-x-3">
+                    <UserCircleIcon className="w-6 h-6 text-light-text" />
+                    <span>{user.fullName}</span>
+                </div>
+                <div className="flex items-center space-x-3">
+                    <PhoneIcon className="w-6 h-6 text-light-text" />
+                    <span>{user.phone}</span>
+                </div>
+                <div className="flex items-center space-x-3">
+                    <EnvelopeIcon className="w-6 h-6 text-light-text" />
+                    <span>{user.email}</span>
+                </div>
+            </div>
+        )}
+    </div>
+  );
 
   const NotificationSettings = (
     <div className="bg-white p-6 rounded-lg shadow-md mb-8">
@@ -149,6 +195,7 @@ const ProfilePage: React.FC = () => {
         </button>
       </div>
       
+      {ProfileDetails}
       {NotificationSettings}
       
       <div className="border-b border-gray-200 mb-8">
