@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useBooking } from '../context/BookingContext';
 import { MOCK_SERVICES, MOCK_PROFESSIONALS, getAvailableTimeSlots } from '../data/mockData';
@@ -397,6 +396,17 @@ const BookingPage: React.FC = () => {
     const ConfirmationStep = () => {
         const { service, professional, date, time } = bookingState;
 
+        const handleStartOver = () => {
+            resetBooking();
+            setCurrentStep(1); 
+        };
+
+        const handleCancelEdit = () => {
+            resetBooking();
+            navigate('/perfil');
+        };
+
+
         if (!isLoggedIn && !isEditMode) {
             return <LoginOrRegisterPrompt />;
         }
@@ -430,18 +440,26 @@ const BookingPage: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="mt-8 flex flex-col sm:flex-row gap-4">
+                <div className="mt-8 flex flex-col gap-4">
+                    <div className="flex flex-col sm:flex-row gap-4">
+                        <button
+                            onClick={() => setCurrentStep(3)}
+                            className="w-full sm:w-1/2 order-2 sm:order-1 bg-white text-secondary py-3 px-4 rounded-lg font-semibold border border-gray-300 hover:bg-gray-100 transition-colors"
+                        >
+                            {isEditMode ? 'Cambiar Fecha/Hora' : 'Cambiar Hora'}
+                        </button>
+                        <button
+                            onClick={handleFinalConfirmBooking}
+                            className="w-full sm:w-1/2 order-1 sm:order-2 bg-primary text-white py-3 px-4 rounded-lg font-semibold hover:bg-primary-light transition-transform transform hover:scale-105"
+                        >
+                            {isEditMode ? 'Confirmar Modificación' : 'Confirmar Reserva'}
+                        </button>
+                    </div>
                     <button
-                        onClick={() => setCurrentStep(3)}
-                        className="w-full sm:w-1/2 order-2 sm:order-1 bg-white text-secondary py-3 px-4 rounded-lg font-semibold border border-gray-300 hover:bg-gray-100 transition-colors"
+                        onClick={isEditMode ? handleCancelEdit : handleStartOver}
+                        className="w-full text-center text-sm text-red-600 font-semibold py-3 px-4 rounded-lg hover:bg-red-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                     >
-                        {isEditMode ? 'Cambiar Fecha/Hora' : 'Cambiar Hora'}
-                    </button>
-                    <button
-                        onClick={handleFinalConfirmBooking}
-                        className="w-full sm:w-1/2 order-1 sm:order-2 bg-primary text-white py-3 px-4 rounded-lg font-semibold hover:bg-primary-light transition-transform transform hover:scale-105"
-                    >
-                        {isEditMode ? 'Confirmar Modificación' : 'Confirmar Reserva'}
+                        {isEditMode ? 'Cancelar Modificación' : 'Anular y empezar de nuevo'}
                     </button>
                 </div>
             </div>
