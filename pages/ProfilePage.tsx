@@ -4,6 +4,7 @@ import { MOCK_APPOINTMENTS, MOCK_VOUCHERS, MOCK_SERVICES, MOCK_PROFESSIONALS } f
 import { Appointment, Voucher } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { useBooking } from '../context/BookingContext';
+import CancelConfirmationModal from '../components/profile/CancelConfirmationModal';
 
 type Tab = 'appointments' | 'vouchers';
 
@@ -11,8 +12,15 @@ const ProfilePage: React.FC = () => {
   const { user, isLoggedIn, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('appointments');
   const navigate = useNavigate();
-  const { setService } = useBooking();
+  const { setService, setAppointmentToEdit } = useBooking();
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
+  
+  const [appointments, setAppointments] = useState<Appointment[]>(MOCK_APPOINTMENTS);
+  const [cancelModalState, setCancelModalState] = useState<{ isOpen: boolean; appointment: Appointment | null }>({
+    isOpen: false,
+    appointment: null,
+  });
+
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -21,17 +29,16 @@ const ProfilePage: React.FC = () => {
   }, [isLoggedIn, navigate]);
 
   useEffect(() => {
-    // Check for notification support and set initial permission state
     if ('Notification' in window) {
         setNotificationPermission(Notification.permission);
     }
   }, []);
 
   const { upcomingAppointments, pastAppointments } = useMemo(() => {
-    const upcoming = MOCK_APPOINTMENTS.filter(a => a.status === 'upcoming').sort((a,b) => a.start.getTime() - b.start.getTime());
-    const past = MOCK_APPOINTMENTS.filter(a => a.status !== 'upcoming').sort((a,b) => b.start.getTime() - a.start.getTime());
+    const upcoming = appointments.filter(a => a.status === 'upcoming').sort((a,b) => a.start.getTime() - b.start.getTime());
+    const past = appointments.filter(a => a.status !== 'upcoming').sort((a,b) => b.start.getTime() - a.start.getTime());
     return { upcomingAppointments: upcoming, pastAppointments: past };
-  }, []);
+  }, [appointments]);
 
   // Effect to schedule notifications
   useEffect(() => {
@@ -44,7 +51,6 @@ const ProfilePage: React.FC = () => {
             const now = new Date();
             const scheduledKey = `notification_scheduled_${appt.id}`;
 
-            // Check if reminder is in the future and not already scheduled
             if (reminderTime > now && !localStorage.getItem(scheduledKey)) {
                 const delay = reminderTime.getTime() - now.getTime();
 
@@ -69,6 +75,28 @@ const ProfilePage: React.FC = () => {
         setNotificationPermission(permission);
     }
   };
+  
+  const handleEdit = (appointment: Appointment) => {
+    setAppointmentToEdit(appointment);
+    navigate('/reservar');
+  };
+
+  const handleOpenCancelModal = (appointment: Appointment) => {
+    setCancelModalState({ isOpen: true, appointment });
+  };
+
+  const handleConfirmCancel = () => {
+    if (cancelModalState.appointment) {
+        setAppointments(prevAppointments =>
+            prevAppointments.map(appt =>
+                appt.id === cancelModalState.appointment?.id
+                    ? { ...appt, status: 'cancelled' }
+                    : appt
+            )
+        );
+        setCancelModalState({ isOpen: false, appointment: null });
+    }
+  };
 
   const handleBookFromVoucher = (voucher: Voucher) => {
     const serviceToBook = MOCK_SERVICES.find(s => s.id === voucher.serviceId);
@@ -79,7 +107,7 @@ const ProfilePage: React.FC = () => {
   };
 
   if (!user) {
-    return null; // Or a loading spinner
+    return null; 
   }
 
   const NotificationSettings = (
@@ -109,6 +137,7 @@ const ProfilePage: React.FC = () => {
   );
 
   return (
+    <>
     <div className="container mx-auto px-4 py-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
         <div>
@@ -120,10 +149,8 @@ const ProfilePage: React.FC = () => {
         </button>
       </div>
       
-      {/* Notification Settings */}
       {NotificationSettings}
       
-      {/* Tabs */}
       <div className="border-b border-gray-200 mb-8">
         <nav className="-mb-px flex space-x-8" aria-label="Tabs">
           <button
@@ -141,12 +168,20 @@ const ProfilePage: React.FC = () => {
         </nav>
       </div>
 
-      {/* Content */}
       <div>
         {activeTab === 'appointments' && (
           <div className="space-y-12">
-            <AppointmentSection title="Próximas Citas" appointments={upcomingAppointments} />
-            <AppointmentSection title="Historial de Citas" appointments={pastAppointments} isPast={true} />
+            <AppointmentSection 
+              title="Próximas Citas" 
+              appointments={upcomingAppointments}
+              onEdit={handleEdit}
+              onCancel={handleOpenCancelModal}
+            />
+            <AppointmentSection 
+              title="Historial de Citas" 
+              appointments={pastAppointments} 
+              isPast={true} 
+            />
           </div>
         )}
         {activeTab === 'vouchers' && (
@@ -173,6 +208,13 @@ const ProfilePage: React.FC = () => {
         )}
       </div>
     </div>
+    <CancelConfirmationModal
+        isOpen={cancelModalState.isOpen}
+        onClose={() => setCancelModalState({ isOpen: false, appointment: null })}
+        onConfirm={handleConfirmCancel}
+        appointment={cancelModalState.appointment}
+    />
+    </>
   );
 };
 
@@ -180,9 +222,12 @@ interface AppointmentSectionProps {
   title: string;
   appointments: Appointment[];
   isPast?: boolean;
+  onEdit?: (appointment: Appointment) => void;
+  onCancel?: (appointment: Appointment) => void;
 }
 
-const AppointmentSection: React.FC<AppointmentSectionProps> = ({ title, appointments, isPast = false }) => {
+const AppointmentSection: React.FC<AppointmentSectionProps> = ({ title, appointments, isPast = false, onEdit, onCancel }) => {
+    const navigate = useNavigate();
     return (
         <div>
             <h2 className="text-2xl font-bold text-secondary mb-4">{title}</h2>
@@ -192,18 +237,24 @@ const AppointmentSection: React.FC<AppointmentSectionProps> = ({ title, appointm
                          const service = MOCK_SERVICES.find(s => s.id === appt.serviceId);
                          const professional = MOCK_PROFESSIONALS.find(p => p.id === appt.professionalId);
                          if (!service || !professional) return null;
+                         const statusStyles = {
+                             upcoming: 'border-l-blue-400',
+                             completed: 'border-l-green-400',
+                             cancelled: 'border-l-red-400'
+                         };
                          return (
-                             <div key={appt.id} className="bg-white p-5 rounded-lg shadow-md">
+                             <div key={appt.id} className={`bg-white p-5 rounded-lg shadow-md border-l-4 ${statusStyles[appt.status] || 'border-l-gray-300'}`}>
                                  <div className="flex flex-col md:flex-row justify-between">
                                      <div>
                                          <p className="font-bold text-lg text-secondary">{service.name}</p>
                                          <p className="text-light-text">con {professional.name}</p>
                                          <p className="text-light-text font-medium">{appt.start.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                                         {isPast && <p className="text-sm font-semibold capitalize mt-1 text-gray-600">{appt.status === 'completed' ? 'Completada' : 'Cancelada'}</p>}
                                      </div>
-                                     {!isPast && (
+                                     {!isPast && onEdit && onCancel && (
                                          <div className="flex items-center space-x-2 mt-4 md:mt-0">
-                                             <button className="text-sm text-gray-600 font-semibold py-2 px-4 rounded-lg border border-gray-300 hover:bg-gray-100">Editar</button>
-                                             <button className="text-sm text-red-600 font-semibold py-2 px-4 rounded-lg border border-red-200 hover:bg-red-50">Anular</button>
+                                             <button onClick={() => onEdit(appt)} className="text-sm text-gray-600 font-semibold py-2 px-4 rounded-lg border border-gray-300 hover:bg-gray-100 transition-colors">Editar</button>
+                                             <button onClick={() => onCancel(appt)} className="text-sm text-red-600 font-semibold py-2 px-4 rounded-lg border border-red-200 hover:bg-red-50 transition-colors">Anular</button>
                                          </div>
                                      )}
                                  </div>
@@ -214,7 +265,7 @@ const AppointmentSection: React.FC<AppointmentSectionProps> = ({ title, appointm
             ) : (
                 <div className="bg-white p-8 rounded-lg text-center">
                     <p className="text-light-text">No tienes {isPast ? 'citas pasadas' : 'próximas citas'}.</p>
-                    {!isPast && <button onClick={() => window.location.hash = '/reservar'} className="mt-4 bg-primary text-white px-5 py-2 rounded-lg font-semibold hover:bg-primary-light">Reservar una nueva cita</button>}
+                    {!isPast && <button onClick={() => navigate('/reservar')} className="mt-4 bg-primary text-white px-5 py-2 rounded-lg font-semibold hover:bg-primary-light transition-colors">Reservar una nueva cita</button>}
                 </div>
             )}
         </div>

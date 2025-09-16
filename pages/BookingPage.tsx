@@ -30,6 +30,8 @@ const BookingPage: React.FC = () => {
     const [currentStep, setCurrentStep] = useState(1);
     const { bookingState, setService, setProfessional, setDateTime, resetBooking } = useBooking();
     const navigate = useNavigate();
+
+    const isEditMode = useMemo(() => !!bookingState.appointmentToEdit, [bookingState.appointmentToEdit]);
     
     // --- State for Step 1: Service Selection ---
     const [searchTerm, setSearchTerm] = useState('');
@@ -82,11 +84,24 @@ const BookingPage: React.FC = () => {
     }, [searchTerm, selectedCategory]);
 
 
+    // Effect to manage the current step based on the booking state.
+    // It sets the initial step and handles navigation when a service is selected.
     useEffect(() => {
-        if (bookingState.service) {
+        if (isEditMode) {
+            setCurrentStep(3);
+        } else if (bookingState.service) {
             setCurrentStep(2);
+        } else {
+            setCurrentStep(1);
         }
-    }, [bookingState.service]);
+    }, [isEditMode, bookingState.service]);
+
+    // Effect to sync the local selectedDate with the global booking state's date.
+    // This ensures the calendar displays the correct date, especially in edit mode or when navigating back.
+    useEffect(() => {
+        setSelectedDate(bookingState.date || new Date());
+    }, [bookingState.date]);
+
 
     // Effect for 'date' search mode
     useEffect(() => {
@@ -179,13 +194,13 @@ const BookingPage: React.FC = () => {
             setBookingResult({
                 isOpen: true,
                 status: 'success',
-                message: 'Tu cita ha sido confirmada correctamente. ¡Te esperamos!'
+                message: isEditMode ? 'Tu cita ha sido modificada correctamente.' : 'Tu cita ha sido confirmada correctamente. ¡Te esperamos!'
             });
         } else {
              setBookingResult({
                 isOpen: true,
                 status: 'error',
-                message: 'Error de conexión: No hemos podido procesar tu reserva. Por favor, inténtalo de nuevo.'
+                message: 'Error de conexión: No hemos podido procesar tu solicitud. Por favor, inténtalo de nuevo.'
             });
         }
     };
@@ -204,247 +219,252 @@ const BookingPage: React.FC = () => {
     const weekDays = useMemo(() => {
         const startOfWeek = new Date();
         startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay() + 1 + (weekOffset * 7));
-        return Array.from({length: 7}).map((_, i) => {
+        return Array.from({ length: 7 }, (_, i) => {
             const date = new Date(startOfWeek);
             date.setDate(date.getDate() + i);
             return date;
         });
     }, [weekOffset]);
 
-    const timeOptions = useMemo(() => {
-        const options = [];
-        for (let h = 9; h <= 19; h++) {
-            options.push(`${h.toString().padStart(2, '0')}:00`);
-        }
-        return options;
-    }, []);
 
-    const timeRanges: { key: TimeRangeKey, label: string }[] = [
-        { key: 'any', label: 'Cualquier hora' },
-        { key: 'morning', label: 'Mañana' },
-        { key: 'afternoon', label: 'Tarde' },
-        { key: 'custom', label: 'Elegir Horas' },
-    ];
+    // --- Step 1: Service Selection ---
+    const ServiceStep = () => (
+        <div className="max-w-4xl mx-auto">
+            <h2 className="text-3xl font-bold text-secondary mb-6 text-center">1. Elige un servicio</h2>
+            <div className="mb-6 space-y-4">
+                <input
+                type="text"
+                placeholder="Buscar servicio..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
+                />
+                <div className="flex space-x-3 overflow-x-auto pb-3 -mx-4 px-4">
+                    {categories.map(category => (
+                        <button
+                        key={category}
+                        onClick={() => setSelectedCategory(category)}
+                        className={`flex-shrink-0 px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transition-colors duration-200 border-2 ${
+                            selectedCategory === category
+                            ? 'bg-primary text-white border-primary'
+                            : 'bg-white text-secondary border-gray-300 hover:bg-gray-100'
+                        }`}
+                        >
+                        {category}
+                        </button>
+                    ))}
+                </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredServices.map(service => (
+                    <button key={service.id} onClick={() => handleSelectService(service)} className="bg-white p-4 rounded-lg shadow text-left hover:shadow-lg hover:ring-2 hover:ring-primary transition">
+                        <h3 className="font-bold text-secondary">{service.name}</h3>
+                        <p className="text-sm text-light-text">{service.duration} min</p>
+                        <p className="font-semibold text-primary mt-2">{service.price}€</p>
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+    
+    // --- Step 2: Professional Selection ---
+    const ProfessionalStep = () => {
+        const availableProfessionals = MOCK_PROFESSIONALS.filter(p => bookingState.service?.professionalIds.includes(p.id));
 
-    // Auto-adjust end time if start time becomes >= end time
-    useEffect(() => {
-        if (customStartTime >= customEndTime) {
-            const startIndex = timeOptions.findIndex(t => t === customStartTime);
-            if (startIndex < timeOptions.length - 1) {
-                setCustomEndTime(timeOptions[startIndex + 1]);
-            }
-        }
-    }, [customStartTime, customEndTime, timeOptions]);
-
-    return (
-        <div className="container mx-auto px-4 py-8 max-w-4xl">
-            <h1 className="text-4xl font-extrabold text-secondary tracking-tight text-center mb-8">Reservar una Cita</h1>
-            <StepIndicator currentStep={currentStep} />
-            <div className="bg-white rounded-lg shadow-xl p-6 md:p-10 min-h-[400px]">
-
-                {/* Step 1: Select Service */}
-                {currentStep === 1 && (
-                    <div>
-                        <h2 className="text-2xl font-bold text-secondary mb-6">1. Selecciona un Servicio</h2>
-                        
-                        <div className="mb-6 flex flex-col sm:flex-row gap-4">
-                            <input
-                                type="text"
-                                placeholder="Buscar por nombre..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full sm:w-1/2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
-                            />
-                            <select
-                                value={selectedCategory}
-                                onChange={(e) => setSelectedCategory(e.target.value)}
-                                className="w-full sm:w-1/2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition bg-white"
-                            >
-                                {categories.map(category => (
-                                    <option key={category} value={category}>{category}</option>
-                                ))}
-                            </select>
+        return (
+            <div className="max-w-2xl mx-auto">
+                <h2 className="text-3xl font-bold text-secondary mb-6 text-center">2. Elige un profesional</h2>
+                <div className="space-y-4">
+                    <button onClick={() => handleSelectProfessional(null)} className={`w-full flex items-center p-4 rounded-lg shadow transition-all border-2 ${bookingState.professional === null ? 'bg-primary/10 border-primary' : 'bg-white hover:shadow-lg'}`}>
+                        <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center font-bold text-secondary text-xl mr-4">?</div>
+                        <div>
+                            <h3 className="font-bold text-secondary text-lg">Cualquier Profesional</h3>
+                            <p className="text-sm text-light-text">Te asignaremos el primer profesional disponible.</p>
                         </div>
-
-                        {filteredServices.length > 0 ? (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {filteredServices.map(service => (
-                                    <button key={service.id} onClick={() => handleSelectService(service)} className="text-left p-4 border rounded-lg hover:bg-primary hover:text-white transition-colors hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary">
-                                        <h3 className="font-semibold">{service.name}</h3>
-                                        <p className="text-sm">{service.price}€ - {service.duration} min</p>
-                                    </button>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="text-center text-light-text py-8">No se encontraron servicios que coincidan con tu búsqueda.</p>
-                        )}
-                    </div>
-                )}
-
-                {/* Step 2: Select Professional */}
-                {currentStep === 2 && bookingState.service && (
-                    <div>
-                         <h2 className="text-2xl font-bold text-secondary mb-6">2. Elige un Profesional</h2>
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                             <button onClick={() => handleSelectProfessional(null)} className="flex items-center space-x-4 p-4 border rounded-lg hover:bg-primary hover:text-white transition-colors hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary">
-                                 <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center">
-                                    <span className="text-3xl text-gray-500">?</span>
-                                 </div>
-                                 <h3 className="font-semibold text-lg">Indiferente</h3>
-                             </button>
-                             {MOCK_PROFESSIONALS.filter(p => bookingState.service?.professionalIds.includes(p.id)).map(prof => (
-                                <button key={prof.id} onClick={() => handleSelectProfessional(prof)} className="flex items-center space-x-4 p-4 border rounded-lg hover:bg-primary hover:text-white transition-colors hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary">
-                                    <img src={prof.avatarUrl} alt={prof.name} className="w-16 h-16 rounded-full object-cover" />
-                                    <h3 className="font-semibold text-lg">{prof.name}</h3>
-                                </button>
-                             ))}
-                         </div>
-                         <button onClick={() => setCurrentStep(1)} className="mt-8 text-sm text-gray-600 hover:text-secondary">← Volver a Servicios</button>
-                    </div>
-                )}
-                
-                {/* Step 3: Select Date & Time */}
-                {currentStep === 3 && (
-                    <div>
-                        <h2 className="text-2xl font-bold text-secondary mb-4">3. Elige Fecha y Hora</h2>
-                        
-                        {/* Search Mode Tabs */}
-                        <div className="flex border-b mb-6">
-                            <button onClick={() => setSearchMode('date')} className={`px-4 py-2 text-base md:text-lg font-semibold transition-colors duration-200 ${searchMode === 'date' ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-secondary'}`}>
-                                Por Fecha
-                            </button>
-                            <button onClick={() => setSearchMode('timeRange')} className={`px-4 py-2 text-base md:text-lg font-semibold transition-colors duration-200 ${searchMode === 'timeRange' ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-secondary'}`}>
-                                Por Franja Horaria
-                            </button>
-                        </div>
-
-                        {/* Content for 'date' search mode */}
-                        {searchMode === 'date' && (
+                    </button>
+                    {availableProfessionals.map(prof => (
+                        <button key={prof.id} onClick={() => handleSelectProfessional(prof)} className={`w-full flex items-center p-4 rounded-lg shadow transition-all border-2 ${bookingState.professional?.id === prof.id ? 'bg-primary/10 border-primary' : 'bg-white hover:shadow-lg'}`}>
+                            <img src={prof.avatarUrl} alt={prof.name} className="w-16 h-16 rounded-full object-cover mr-4" />
                             <div>
-                                <div className="flex items-center justify-between mb-4">
-                                    <button onClick={() => setWeekOffset(w => w - 1)} className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-50" disabled={weekOffset <= 0}><ChevronLeftIcon className="w-6 h-6"/></button>
-                                    <span className="font-semibold">{weekDays[0].toLocaleDateString('es-ES', {month: 'long'})} {weekDays[0].getFullYear()}</span>
-                                    <button onClick={() => setWeekOffset(w => w + 1)} className="p-2 rounded-full hover:bg-gray-100"><ChevronRightIcon className="w-6 h-6"/></button>
-                                </div>
-                                <div className="grid grid-cols-7 gap-2 text-center mb-4">
-                                     {weekDays.map(day => (
-                                        <button key={day.toISOString()} onClick={() => setSelectedDate(day)} className={`p-2 rounded-lg transition-colors ${selectedDate.toDateString() === day.toDateString() ? 'bg-primary text-white' : 'hover:bg-gray-100'}`}>
-                                            <p className="text-xs">{day.toLocaleDateString('es-ES', {weekday: 'short'})}</p>
-                                            <p className="font-bold text-lg">{day.getDate()}</p>
-                                        </button>
-                                     ))}
-                                </div>
-                                <div className="border-t pt-4 mt-4">
-                                    <h3 className="font-semibold text-center mb-4">Horas disponibles para el {selectedDate.toLocaleDateString('es-ES', {dateStyle: 'long'})}</h3>
-                                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                                        {availableSlots.map(slot => (
-                                            <button key={slot.time} onClick={() => handleSelectDateTime(selectedDate, slot.time)} disabled={!slot.available} className="px-4 py-2 border rounded-lg transition-colors disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed enabled:hover:bg-primary enabled:hover:text-white enabled:border-primary focus:outline-none focus:ring-2 focus:ring-primary">
-                                                {slot.time}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
+                                <h3 className="font-bold text-secondary text-lg">{prof.name}</h3>
                             </div>
-                        )}
+                        </button>
+                    ))}
+                </div>
+                 <button onClick={() => setCurrentStep(1)} className="mt-6 text-sm text-light-text hover:underline">Volver a servicios</button>
+            </div>
+        );
+    };
 
-                        {/* Content for 'timeRange' search mode */}
-                        {searchMode === 'timeRange' && (
-                             <div>
-                                <h3 className="font-semibold text-light-text text-center mb-4">¿Cuándo te viene bien?</h3>
-                                <div className="flex justify-center gap-2 md:gap-4 mb-4">
-                                    {timeRanges.map(range => (
-                                        <button key={range.key} onClick={() => setSelectedTimeRange(range.key)} className={`px-4 py-2 text-sm md:text-base border rounded-full font-semibold transition-colors ${selectedTimeRange === range.key ? 'bg-primary text-white border-primary' : 'bg-white text-secondary border-gray-300 hover:bg-gray-100'}`}>
-                                            {range.label}
-                                        </button>
-                                    ))}
-                                </div>
-
-                                {selectedTimeRange === 'custom' && (
-                                    <div className="mb-8 flex items-center justify-center gap-2 p-3 bg-gray-50 rounded-lg">
-                                        <label htmlFor="start-time" className="text-light-text">Entre las</label>
-                                        <select
-                                            id="start-time"
-                                            value={customStartTime}
-                                            onChange={(e) => setCustomStartTime(e.target.value)}
-                                            className="px-2 py-1 border border-gray-300 rounded-md bg-white focus:ring-primary focus:border-primary"
-                                            aria-label="Hora de inicio"
-                                        >
-                                            {timeOptions.slice(0, -1).map(t => <option key={t} value={t}>{t}</option>)}
-                                        </select>
-                                        <label htmlFor="end-time" className="text-light-text">y las</label>
-                                        <select
-                                            id="end-time"
-                                            value={customEndTime}
-                                            onChange={(e) => setCustomEndTime(e.target.value)}
-                                            className="px-2 py-1 border border-gray-300 rounded-md bg-white focus:ring-primary focus:border-primary"
-                                            aria-label="Hora de fin"
-                                        >
-                                            {timeOptions.filter(t => t > customStartTime).map(t => <option key={t} value={t}>{t}</option>)}
-                                        </select>
-                                    </div>
-                                )}
-                                 <div className="border-t pt-4 mt-4 space-y-4">
-                                     {isLoadingSlots ? (
-                                         <p className="text-center text-light-text">Buscando los próximos huecos disponibles...</p>
-                                     ) : foundSlotsByRange.length > 0 ? (
-                                         foundSlotsByRange.map(result => (
-                                             <div key={result.date.toISOString()}>
-                                                 <h4 className="font-bold text-secondary mb-2">{result.date.toLocaleDateString('es-ES', { weekday: 'long', month: 'long', day: 'numeric' })}</h4>
-                                                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                                                      {result.slots.map(slot => (
-                                                        <button key={slot.time} onClick={() => handleSelectDateTime(result.date, slot.time)} className="px-4 py-2 border rounded-lg transition-colors hover:bg-primary hover:text-white border-primary focus:outline-none focus:ring-2 focus:ring-primary">
-                                                             {slot.time}
-                                                        </button>
-                                                     ))}
-                                                 </div>
-                                             </div>
-                                         ))
-                                     ) : (
-                                         <p className="text-center text-light-text pt-4">No se encontraron huecos disponibles en esta franja horaria. Prueba con otra.</p>
-                                     )}
-                                 </div>
-                             </div>
-                        )}
-                        <button onClick={() => setCurrentStep(2)} className="mt-8 text-sm text-gray-600 hover:text-secondary">← Volver a Profesionales</button>
-                    </div>
-                )}
-
-
-                {/* Step 4: Confirmation */}
-                {currentStep === 4 && bookingState.service && bookingState.date && bookingState.time && (
-                    <div>
-                        <h2 className="text-2xl font-bold text-secondary mb-6">4. Confirma tu Cita</h2>
-                        <div className="space-y-4 p-6 bg-light-bg rounded-lg border">
-                            <div>
-                                <h3 className="font-semibold text-light-text">Servicio</h3>
-                                <p className="text-lg text-secondary">{bookingState.service.name}</p>
-                            </div>
-                             <div>
-                                <h3 className="font-semibold text-light-text">Profesional</h3>
-                                <p className="text-lg text-secondary">{bookingState.professional?.name || 'Indiferente'}</p>
-                            </div>
-                            <div>
-                                <h3 className="font-semibold text-light-text">Fecha y Hora</h3>
-                                <p className="text-lg text-secondary">{bookingState.date.toLocaleDateString('es-ES', {dateStyle: 'full'})} a las {bookingState.time}</p>
-                            </div>
-                             <div>
-                                <h3 className="font-semibold text-light-text">Total</h3>
-                                <p className="text-xl font-bold text-primary">{bookingState.service.price}€</p>
-                            </div>
-                        </div>
-                        <div className="mt-8 flex flex-col md:flex-row gap-4">
-                            <button onClick={() => setCurrentStep(3)} className="w-full md:w-auto px-6 py-3 border border-gray-300 rounded-lg text-secondary font-semibold hover:bg-gray-100">
-                                Cambiar Hora
-                            </button>
-                            <button onClick={handleFinalConfirmBooking} className="w-full md:w-auto flex-1 bg-primary text-white py-3 rounded-lg font-semibold hover:bg-primary-light transition-colors">
-                                Confirmar Reserva
-                            </button>
-                        </div>
-                    </div>
-                )}
+    // --- Step 3: Date & Time Selection ---
+    const DateTimeStep = () => (
+        <div className="bg-white rounded-lg shadow-lg p-6 md:p-8 max-w-4xl mx-auto">
+            <h2 className="text-3xl font-bold text-secondary mb-6 text-center">3. Elige fecha y hora</h2>
+            
+            {/* Search Mode Tabs */}
+            <div className="flex justify-center border-b mb-6">
+                <button onClick={() => setSearchMode('date')} className={`px-6 py-2 font-semibold ${searchMode === 'date' ? 'border-b-2 border-primary text-primary' : 'text-light-text'}`}>Buscar por Día</button>
+                <button onClick={() => setSearchMode('timeRange')} className={`px-6 py-2 font-semibold ${searchMode === 'timeRange' ? 'border-b-2 border-primary text-primary' : 'text-light-text'}`}>Buscar por Franja</button>
             </div>
 
-            <BookingResultModal
+            {searchMode === 'date' ? (
+                <>
+                    {/* Week Navigator */}
+                    <div className="flex items-center justify-between mb-4">
+                        <button onClick={() => setWeekOffset(weekOffset - 1)} className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-50" disabled={weekOffset === 0}><ChevronLeftIcon className="w-6 h-6" /></button>
+                        <span className="font-semibold text-secondary">
+                            {weekDays[0].toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+                        </span>
+                        <button onClick={() => setWeekOffset(weekOffset + 1)} className="p-2 rounded-full hover:bg-gray-100"><ChevronRightIcon className="w-6 h-6" /></button>
+                    </div>
+                    {/* Day Selector */}
+                    <div className="grid grid-cols-7 gap-2 mb-6">
+                        {weekDays.map(day => (
+                            <button 
+                                key={day.toISOString()} 
+                                onClick={() => setSelectedDate(day)}
+                                className={`p-2 rounded-lg text-center transition ${selectedDate.toDateString() === day.toDateString() ? 'bg-primary text-white' : 'hover:bg-gray-100'}`}
+                            >
+                                <span className="text-xs uppercase">{day.toLocaleDateString('es-ES', { weekday: 'short' })}</span>
+                                <span className="block font-bold text-lg">{day.getDate()}</span>
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Available Slots */}
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                        {availableSlots.map(slot => (
+                            <button 
+                                key={slot.time}
+                                onClick={() => handleSelectDateTime(selectedDate, slot.time)}
+                                disabled={!slot.available}
+                                className="px-4 py-3 rounded-lg font-semibold transition disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed bg-secondary text-white hover:bg-primary"
+                            >
+                                {slot.time}
+                            </button>
+                        ))}
+                    </div>
+                </>
+            ) : (
+                <>
+                    {/* Time Range Selector */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                        {(['any', 'morning', 'afternoon', 'custom'] as TimeRangeKey[]).map(range => (
+                            <button key={range} onClick={() => setSelectedTimeRange(range)} className={`px-4 py-3 rounded-lg font-semibold transition ${selectedTimeRange === range ? 'bg-primary text-white' : 'bg-gray-200 text-secondary'}`}>
+                                {{'any': 'Cualquier hora', 'morning': 'Mañana', 'afternoon': 'Tarde', 'custom': 'Personalizado'}[range]}
+                            </button>
+                        ))}
+                    </div>
+                    {selectedTimeRange === 'custom' && (
+                        <div className="flex items-center justify-center gap-4 p-4 bg-gray-100 rounded-lg mb-4">
+                            <label>Desde: <input type="time" value={customStartTime} onChange={e => setCustomStartTime(e.target.value)} className="p-1 rounded border"/></label>
+                            <label>Hasta: <input type="time" value={customEndTime} onChange={e => setCustomEndTime(e.target.value)} className="p-1 rounded border"/></label>
+                        </div>
+                    )}
+
+                    {/* Found Slots */}
+                    {isLoadingSlots && <div className="text-center p-8">Buscando huecos disponibles...</div>}
+                    {!isLoadingSlots && (
+                         <div className="space-y-4 max-h-80 overflow-y-auto">
+                             {foundSlotsByRange.length > 0 ? foundSlotsByRange.map(({ date, slots }) => (
+                                 <div key={date.toISOString()}>
+                                     <h4 className="font-bold text-secondary mb-2">{date.toLocaleDateString('es-ES', { weekday: 'long', month: 'long', day: 'numeric' })}</h4>
+                                     <div className="flex flex-wrap gap-3">
+                                         {slots.map(slot => (
+                                             <button key={slot.time} onClick={() => handleSelectDateTime(date, slot.time)} className="px-4 py-2 rounded-lg font-semibold transition bg-secondary text-white hover:bg-primary">
+                                                 {slot.time}
+                                             </button>
+                                         ))}
+                                     </div>
+                                 </div>
+                             )) : <p className="text-center text-light-text p-8">No se encontraron huecos en los próximos 30 días con esos criterios.</p>}
+                         </div>
+                    )}
+                </>
+            )}
+
+            <div className="mt-8 flex justify-center">
+                 <button onClick={() => setCurrentStep(2)} className="text-sm text-light-text hover:underline">Volver a profesionales</button>
+            </div>
+        </div>
+    );
+    
+    // --- Step 4: Confirmation ---
+    const ConfirmationStep = () => {
+        const { service, professional, date, time } = bookingState;
+        if (!service || !date || !time) return <p>Faltan datos de la reserva.</p>;
+
+        const professionalName = professional?.name || 'Cualquier profesional';
+        const formattedDate = date.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        
+        return (
+            <div className="bg-white rounded-lg shadow-lg p-6 md:p-8 max-w-2xl mx-auto">
+                <h2 className="text-3xl font-bold text-secondary mb-6 text-center">
+                   {isEditMode ? '4. Confirma tu modificación' : '4. Confirma tu reserva'}
+                </h2>
+                <div className="space-y-4 p-4 bg-light-bg rounded-lg border border-gray-200">
+                    <div>
+                        <h3 className="font-semibold text-sm text-light-text">Servicio</h3>
+                        <p className="text-lg text-secondary">{service.name}</p>
+                    </div>
+                     <div>
+                        <h3 className="font-semibold text-sm text-light-text">Profesional</h3>
+                        <p className="text-lg text-secondary">{professionalName}</p>
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-sm text-light-text">Fecha y Hora</h3>
+                        <p className="text-lg text-secondary">{formattedDate} a las {time}</p>
+                    </div>
+                     <div>
+                        <h3 className="font-semibold text-sm text-light-text">Total</h3>
+                        <p className="text-xl font-bold text-primary">{service.price}€</p>
+                    </div>
+                </div>
+
+                <div className="mt-8 flex flex-col sm:flex-row gap-4">
+                    <button
+                        onClick={() => setCurrentStep(3)}
+                        className="w-full sm:w-1/2 order-2 sm:order-1 bg-white text-secondary py-3 px-4 rounded-lg font-semibold border border-gray-300 hover:bg-gray-100 transition-colors"
+                    >
+                        {isEditMode ? 'Cambiar Fecha/Hora' : 'Cambiar Hora'}
+                    </button>
+                    <button
+                        onClick={handleFinalConfirmBooking}
+                        className="w-full sm:w-1/2 order-1 sm:order-2 bg-primary text-white py-3 px-4 rounded-lg font-semibold hover:bg-primary-light transition-transform transform hover:scale-105"
+                    >
+                        {isEditMode ? 'Confirmar Modificación' : 'Confirmar Reserva'}
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
+    const renderStep = () => {
+        switch (currentStep) {
+            case 1: return <ServiceStep />;
+            case 2: return <ProfessionalStep />;
+            case 3: return <DateTimeStep />;
+            case 4: return <ConfirmationStep />;
+            default: return <p>Paso desconocido</p>;
+        }
+    };
+    
+    return (
+        <div className="container mx-auto px-4 py-8">
+            <div className="max-w-4xl mx-auto">
+                <h1 className="text-4xl font-extrabold text-secondary tracking-tight text-center mb-4">
+                     {isEditMode ? 'Modificar Cita' : 'Reservar una Cita'}
+                </h1>
+                 <p className="text-center text-lg text-light-text mb-8">
+                    {isEditMode 
+                        ? 'Selecciona una nueva fecha u hora para tu cita.' 
+                        : 'Sigue los pasos para reservar tu tratamiento.'
+                    }
+                </p>
+                {!isEditMode && <StepIndicator currentStep={currentStep} />}
+                <div className="mt-8">{renderStep()}</div>
+            </div>
+            <BookingResultModal 
                 isOpen={bookingResult.isOpen}
                 onClose={handleCloseResultModal}
                 status={bookingResult.status}
