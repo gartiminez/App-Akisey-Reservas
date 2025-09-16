@@ -7,6 +7,7 @@ import { useBooking } from '../context/BookingContext';
 import CancelConfirmationModal from '../components/profile/CancelConfirmationModal';
 import EditProfileForm from '../components/profile/EditProfileForm';
 import { PencilIcon, EnvelopeIcon, PhoneIcon, UserCircleIcon } from '../components/icons';
+import SuccessToast from '../components/common/SuccessToast';
 
 
 type Tab = 'appointments' | 'vouchers';
@@ -25,6 +26,7 @@ const ProfilePage: React.FC = () => {
   });
 
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
 
 
   useEffect(() => {
@@ -106,6 +108,7 @@ const ProfilePage: React.FC = () => {
   const handleSaveProfile = (updatedDetails: { fullName: string; phone: string; email: string }) => {
     updateUser(updatedDetails);
     setIsEditingProfile(false);
+    setShowSuccessToast(true);
   };
 
 
@@ -260,6 +263,11 @@ const ProfilePage: React.FC = () => {
         onClose={() => setCancelModalState({ isOpen: false, appointment: null })}
         onConfirm={handleConfirmCancel}
         appointment={cancelModalState.appointment}
+    />
+    <SuccessToast 
+      isOpen={showSuccessToast}
+      onClose={() => setShowSuccessToast(false)}
+      message="¡Tus datos han sido actualizados con éxito!"
     />
     </>
   );
