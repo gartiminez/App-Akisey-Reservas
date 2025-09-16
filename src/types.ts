@@ -52,3 +52,10 @@ export interface TimeSlot {
   time: string;
   available: boolean;
 }
+
+export interface SignUpData {
+  email: string;
+  password: string;
+  fullName: string;
+  phone: string;
+}
