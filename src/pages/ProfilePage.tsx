@@ -1,224 +1,125 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { MOCK_APPOINTMENTS, MOCK_VOUCHERS, MOCK_SERVICES, MOCK_PROFESSIONALS } from '../data/mockData';
-import { Appointment, Voucher } from '../types';
-import { useNavigate } from 'react-router-dom';
-import { useBooking } from '../context/BookingContext';
+import { useState, useEffect } from "react";
+import { useAuth } from "../context/AuthContext";
+import { supabase } from "../lib/supabaseClient";
+import { Appointment, ClientBono, Service } from "../types"; // Asumiendo que ClientBono está en tus tipos
 
-type Tab = 'appointments' | 'vouchers';
+const ProfilePage = () => {
+  // 1. ESTADO Y HOOKS
+  const { user, clientProfile, logout, isLoading: authLoading } = useAuth();
+  const [appointments, setAppointments] = useState<any[]>([]); // Usamos 'any' por simplicidad, se puede mejorar
+  const [bonos, setBonos] = useState<any[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
 
-const ProfilePage: React.FC = () => {
-  const { user, isLoggedIn, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<Tab>('appointments');
-  const navigate = useNavigate();
-  const { setService } = useBooking();
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
-
+  // 2. EFECTO PARA CARGAR LOS DATOS DEL USUARIO DESDE SUPABASE
   useEffect(() => {
-    if (!isLoggedIn) {
-      navigate('/');
+    // Solo ejecutamos la carga si tenemos un usuario y su perfil
+    if (user && clientProfile) {
+      const fetchData = async () => {
+        setLoadingData(true);
+
+        // Petición para obtener las citas del cliente
+        const { data: appointmentsData, error: appointmentsError } = await supabase
+          .from('appointments')
+          .select(`
+            *,
+            services (*),
+            professionals (*)
+          `)
+          .eq('client_id', user.id)
+          .order('start_time', { ascending: false });
+
+        if (appointmentsError) {
+          console.error("Error fetching appointments:", appointmentsError);
+        } else {
+          setAppointments(appointmentsData);
+        }
+
+        // Petición para obtener los bonos del cliente
+        const { data: bonosData, error: bonosError } = await supabase
+          .from('client_bonos')
+          .select(`
+            *,
+            bono_definitions ( *, services (*) )
+          `)
+          .eq('client_id', user.id);
+
+        if (bonosError) {
+          console.error("Error fetching client bonos:", bonosError);
+        } else {
+          setBonos(bonosData);
+        }
+
+        setLoadingData(false);
+      };
+
+      fetchData();
+    } else if (!authLoading) {
+      // Si la autenticación ha terminado y no hay usuario, dejamos de cargar
+      setLoadingData(false);
     }
-  }, [isLoggedIn, navigate]);
+  }, [user, clientProfile, authLoading]); // Se ejecuta cada vez que el usuario o su perfil cambian
 
-  useEffect(() => {
-    // Check for notification support and set initial permission state
-    if ('Notification' in window) {
-        setNotificationPermission(Notification.permission);
-    }
-  }, []);
-
-  const { upcomingAppointments, pastAppointments } = useMemo(() => {
-    const upcoming = MOCK_APPOINTMENTS.filter(a => a.status === 'upcoming').sort((a,b) => a.start.getTime() - b.start.getTime());
-    const past = MOCK_APPOINTMENTS.filter(a => a.status !== 'upcoming').sort((a,b) => b.start.getTime() - a.start.getTime());
-    return { upcomingAppointments: upcoming, pastAppointments: past };
-  }, []);
-
-  // Effect to schedule notifications
-  useEffect(() => {
-    if (notificationPermission === 'granted' && upcomingAppointments.length > 0) {
-        upcomingAppointments.forEach(appt => {
-            const service = MOCK_SERVICES.find(s => s.id === appt.serviceId);
-            if (!service) return;
-
-            const reminderTime = new Date(appt.start.getTime() - 24 * 60 * 60 * 1000);
-            const now = new Date();
-            const scheduledKey = `notification_scheduled_${appt.id}`;
-
-            // Check if reminder is in the future and not already scheduled
-            if (reminderTime > now && !localStorage.getItem(scheduledKey)) {
-                const delay = reminderTime.getTime() - now.getTime();
-
-                setTimeout(() => {
-                    new Notification('Recordatorio de Cita - BellezaSana', {
-                        body: `No te olvides de tu cita para "${service.name}" mañana a las ${appt.start.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}.`,
-                        icon: '/favicon.svg',
-                        tag: appt.id 
-                    });
-                    localStorage.removeItem(scheduledKey);
-                }, delay);
-
-                localStorage.setItem(scheduledKey, 'true');
-            }
-        });
-    }
-  }, [upcomingAppointments, notificationPermission]);
-
-  const requestNotificationPermission = async () => {
-    if ('Notification' in window) {
-        const permission = await Notification.requestPermission();
-        setNotificationPermission(permission);
-    }
-  };
-
-  const handleBookFromVoucher = (voucher: Voucher) => {
-    const serviceToBook = MOCK_SERVICES.find(s => s.id === voucher.serviceId);
-    if (serviceToBook) {
-        setService(serviceToBook);
-        navigate('/reservar');
-    }
-  };
-
-  if (!user) {
-    return null; // Or a loading spinner
+  // 3. RENDERIZADO CONDICIONAL
+  if (authLoading || loadingData) {
+    return <div className="text-center p-10">Cargando perfil...</div>;
   }
 
-  const NotificationSettings = (
-    <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-      <h2 className="text-2xl font-bold text-secondary mb-4">Recordatorios de Citas</h2>
-      {notificationPermission === 'granted' && (
-        <p className="text-green-600">Los recordatorios por notificación están activados.</p>
-      )}
-      {notificationPermission === 'denied' && (
-        <div>
-          <p className="text-red-600">Has bloqueado las notificaciones.</p>
-          <p className="text-sm text-light-text">Para activarlas, debes cambiar los permisos en la configuración de tu navegador.</p>
-        </div>
-      )}
-      {notificationPermission === 'default' && (
-        <div>
-            <p className="text-light-text mb-4">¿Quieres recibir un recordatorio 24 horas antes de tu cita?</p>
-            <button
-                onClick={requestNotificationPermission}
-                className="bg-secondary text-white px-5 py-2.5 rounded-lg font-semibold hover:bg-opacity-90 transition-colors"
-            >
-                Activar Recordatorios
-            </button>
-        </div>
-      )}
-    </div>
-  );
+  if (!user) {
+    return <div className="text-center p-10">Por favor, inicia sesión para ver tu perfil.</div>;
+  }
+
+  const upcomingAppointments = appointments.filter(a => new Date(a.start_time) >= new Date());
+  const pastAppointments = appointments.filter(a => new Date(a.start_time) < new Date());
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
+    <div className="container mx-auto p-4 max-w-4xl">
+      <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-4xl font-extrabold text-secondary tracking-tight">Hola, {user.fullName.split(' ')[0]}</h1>
-          <p className="mt-1 text-lg text-light-text">Gestiona tus citas y bonos aquí.</p>
+          <h1 className="text-3xl font-bold">Hola, {clientProfile?.full_name || 'Cliente'}</h1>
+          <p className="text-gray-600">Bienvenido/a a tu espacio personal.</p>
         </div>
-        <button onClick={logout} className="mt-4 md:mt-0 bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors">
-            Cerrar Sesión
+        <button onClick={logout} className="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600">
+          Cerrar Sesión
         </button>
       </div>
-      
-      {/* Notification Settings */}
-      {NotificationSettings}
-      
-      {/* Tabs */}
-      <div className="border-b border-gray-200 mb-8">
-        <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-          <button
-            onClick={() => setActiveTab('appointments')}
-            className={`${activeTab === 'appointments' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-lg`}
-          >
-            Mis Citas
-          </button>
-          <button
-            onClick={() => setActiveTab('vouchers')}
-            className={`${activeTab === 'vouchers' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-lg`}
-          >
-            Mis Bonos
-          </button>
-        </nav>
+
+      {/* SECCIÓN DE BONOS */}
+      <div className="bg-white p-6 rounded-lg shadow-md mb-6">
+        <h2 className="text-2xl font-semibold mb-4">Mis Bonos</h2>
+        {bonos.length > 0 ? (
+          <div className="space-y-4">
+            {bonos.map(bono => (
+              <div key={bono.id} className="border p-4 rounded-md">
+                <p className="font-bold">{bono.bono_definitions.services.name}</p>
+                <p>Sesiones restantes: <span className="font-bold text-pink-500">{bono.remaining_sessions} / {bono.bono_definitions.total_sessions}</span></p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p>No tienes bonos activos en este momento.</p>
+        )}
       </div>
 
-      {/* Content */}
-      <div>
-        {activeTab === 'appointments' && (
-          <div className="space-y-12">
-            <AppointmentSection title="Próximas Citas" appointments={upcomingAppointments} />
-            <AppointmentSection title="Historial de Citas" appointments={pastAppointments} isPast={true} />
-          </div>
-        )}
-        {activeTab === 'vouchers' && (
-            <div className="space-y-6">
-                <h2 className="text-2xl font-bold text-secondary">Bonos Activos</h2>
-                {MOCK_VOUCHERS.map(voucher => {
-                    const service = MOCK_SERVICES.find(s => s.id === voucher.serviceId);
-                    if (!service) return null;
-                    return (
-                        <div key={voucher.id} className="bg-white p-6 rounded-lg shadow-md flex flex-col md:flex-row justify-between items-start md:items-center">
-                            <div>
-                                <h3 className="text-xl font-bold text-secondary">{service.name}</h3>
-                                <p className="text-primary font-semibold mt-2 text-lg">
-                                    Quedan {voucher.remainingSessions} de {voucher.totalSessions} sesiones
-                                </p>
-                            </div>
-                            <button onClick={() => handleBookFromVoucher(voucher)} className="mt-4 md:mt-0 bg-primary text-white px-5 py-2.5 rounded-lg font-semibold hover:bg-primary-light transition-colors">
-                                Reservar Cita
-                            </button>
-                        </div>
-                    );
-                })}
-            </div>
-        )}
+      {/* SECCIÓN DE CITAS */}
+      <div className="bg-white p-6 rounded-lg shadow-md">
+        <h2 className="text-2xl font-semibold mb-4">Mis Citas</h2>
+        
+        <h3 className="text-xl font-semibold text-gray-700 mb-2">Próximas Citas</h3>
+        {upcomingAppointments.length > 0 ? (
+           upcomingAppointments.map(app => (
+             <div key={app.id} className="border-b py-2">{app.services.name} con {app.professionals.full_name} el {new Date(app.start_time).toLocaleDateString()}</div>
+           ))
+        ) : <p>No tienes próximas citas.</p>}
+        
+        <h3 className="text-xl font-semibold text-gray-700 mt-6 mb-2">Historial de Citas</h3>
+        {pastAppointments.length > 0 ? (
+           pastAppointments.map(app => (
+             <div key={app.id} className="border-b py-2 opacity-70">{app.services.name} con {app.professionals.full_name} el {new Date(app.start_time).toLocaleDateString()}</div>
+           ))
+        ) : <p>No tienes citas en tu historial.</p>}
       </div>
     </div>
   );
-};
-
-interface AppointmentSectionProps {
-  title: string;
-  appointments: Appointment[];
-  isPast?: boolean;
-}
-
-const AppointmentSection: React.FC<AppointmentSectionProps> = ({ title, appointments, isPast = false }) => {
-    return (
-        <div>
-            <h2 className="text-2xl font-bold text-secondary mb-4">{title}</h2>
-            {appointments.length > 0 ? (
-                 <div className="space-y-4">
-                     {appointments.map(appt => {
-                         const service = MOCK_SERVICES.find(s => s.id === appt.serviceId);
-                         const professional = MOCK_PROFESSIONALS.find(p => p.id === appt.professionalId);
-                         if (!service || !professional) return null;
-                         return (
-                             <div key={appt.id} className="bg-white p-5 rounded-lg shadow-md">
-                                 <div className="flex flex-col md:flex-row justify-between">
-                                     <div>
-                                         <p className="font-bold text-lg text-secondary">{service.name}</p>
-                                         <p className="text-light-text">con {professional.name}</p>
-                                         <p className="text-light-text font-medium">{appt.start.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-                                     </div>
-                                     {!isPast && (
-                                         <div className="flex items-center space-x-2 mt-4 md:mt-0">
-                                             <button className="text-sm text-gray-600 font-semibold py-2 px-4 rounded-lg border border-gray-300 hover:bg-gray-100">Editar</button>
-                                             <button className="text-sm text-red-600 font-semibold py-2 px-4 rounded-lg border border-red-200 hover:bg-red-50">Anular</button>
-                                         </div>
-                                     )}
-                                 </div>
-                             </div>
-                         );
-                     })}
-                 </div>
-            ) : (
-                <div className="bg-white p-8 rounded-lg text-center">
-                    <p className="text-light-text">No tienes {isPast ? 'citas pasadas' : 'próximas citas'}.</p>
-                    {!isPast && <button onClick={() => window.location.hash = '/reservar'} className="mt-4 bg-primary text-white px-5 py-2 rounded-lg font-semibold hover:bg-primary-light">Reservar una nueva cita</button>}
-                </div>
-            )}
-        </div>
-    );
 };
 
 export default ProfilePage;
