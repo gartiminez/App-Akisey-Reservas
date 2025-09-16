@@ -8,8 +8,7 @@ interface AuthContextType {
   user: User | null;
   clientProfile: Client | null;
   isLoading: boolean;
-  loginWithOtp: (phone: string) => Promise<any>;
-  verifyOtp: (phone: string, token: string) => Promise<any>;
+  loginWithMagicLink: (email: string) => Promise<any>;
   logout: () => Promise<any>;
 }
 
@@ -26,9 +25,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (!session) {
-        setIsLoading(false);
-      }
+      setIsLoading(false);
     });
 
     // Escuchamos cambios en la autenticación
@@ -45,14 +42,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Cuando el usuario cambia, buscamos su perfil en nuestra tabla 'clients'
   useEffect(() => {
-    if (user) {
+    if (user?.id) {
       supabase
         .from('clients')
         .select('*')
         .eq('id', user.id)
         .single()
         .then(({ data, error }) => {
-          if (error) {
+          if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found, which is fine
             console.error('Error fetching client profile:', error);
           } else {
             setClientProfile(data);
@@ -63,19 +60,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user]);
 
-  const loginWithOtp = async (phone: string) => {
+  const loginWithMagicLink = async (email: string) => {
     const { data, error } = await supabase.auth.signInWithOtp({
-      phone: `+34${phone}`, // Asume prefijo de España, ajústalo si es necesario
-    });
-    if (error) throw error;
-    return data;
-  };
-
-  const verifyOtp = async (phone: string, token: string) => {
-     const { data, error } = await supabase.auth.verifyOtp({
-      phone: `+34${phone}`,
-      token: token,
-      type: 'sms'
+      email: email,
+      options: {
+        // Redirige al usuario a la página de perfil después del login.
+        // Asegúrate de que esta URL está en la lista de URLs permitidas en Supabase.
+        emailRedirectTo: window.location.origin + '/#/perfil',
+      }
     });
     if (error) throw error;
     return data;
@@ -90,8 +82,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     user,
     clientProfile,
     isLoading,
-    loginWithOtp,
-    verifyOtp,
+    loginWithMagicLink,
     logout,
   };
 
@@ -105,3 +96,4 @@ export const useAuth = () => {
   }
   return context;
 };
+
