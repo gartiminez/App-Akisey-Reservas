@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useBooking } from '../context/BookingContext';
 import { MOCK_SERVICES, MOCK_PROFESSIONALS, getAvailableTimeSlots } from '../data/mockData';
@@ -5,6 +6,8 @@ import { Service, Professional, TimeSlot } from '../types';
 import { ChevronLeftIcon, ChevronRightIcon } from '../components/icons';
 import { useNavigate } from 'react-router-dom';
 import BookingResultModal from '../components/booking/BookingResultModal';
+import { useAuth } from '../context/AuthContext';
+import LoginOrRegisterPrompt from '../components/auth/LoginOrRegisterPrompt';
 
 // Helper components defined outside to prevent re-renders
 const StepIndicator: React.FC<{ currentStep: number }> = ({ currentStep }) => {
@@ -29,6 +32,7 @@ const StepIndicator: React.FC<{ currentStep: number }> = ({ currentStep }) => {
 const BookingPage: React.FC = () => {
     const [currentStep, setCurrentStep] = useState(1);
     const { bookingState, setService, setProfessional, setDateTime, resetBooking } = useBooking();
+    const { isLoggedIn } = useAuth();
     const navigate = useNavigate();
 
     const isEditMode = useMemo(() => !!bookingState.appointmentToEdit, [bookingState.appointmentToEdit]);
@@ -392,6 +396,11 @@ const BookingPage: React.FC = () => {
     // --- Step 4: Confirmation ---
     const ConfirmationStep = () => {
         const { service, professional, date, time } = bookingState;
+
+        if (!isLoggedIn && !isEditMode) {
+            return <LoginOrRegisterPrompt />;
+        }
+
         if (!service || !date || !time) return <p>Faltan datos de la reserva.</p>;
 
         const professionalName = professional?.name || 'Cualquier profesional';

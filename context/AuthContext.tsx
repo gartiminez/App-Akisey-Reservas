@@ -1,3 +1,4 @@
+
 import React, { createContext, useState, useContext, ReactNode } from 'react';
 // FIX: The 'Client' type is defined in '../types' and not exported from mockData.
 import { Client } from '../types';
@@ -8,6 +9,7 @@ interface AuthContextType {
   user: Client | null;
   login: () => void;
   logout: () => void;
+  register: (details: { fullName: string; phone: string; email: string }) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,9 +28,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUser(null);
     setIsLoggedIn(false);
   };
+  
+  const register = (details: { fullName: string; phone: string; email: string }) => {
+    // In a real app, this would create a new user via an API call
+    const newUser: Client = {
+      id: `user-${Date.now()}`,
+      ...details
+    };
+    setUser(newUser);
+    setIsLoggedIn(true);
+  };
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn, user, login, logout }}>
+    <AuthContext.Provider value={{ isLoggedIn, user, login, logout, register }}>
       {children}
     </AuthContext.Provider>
   );
