@@ -1,10 +1,10 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useBooking } from '../context/BookingContext';
 import { MOCK_SERVICES, MOCK_PROFESSIONALS, getAvailableTimeSlots } from '../data/mockData';
 import { Service, Professional, TimeSlot } from '../types';
 import { ChevronLeftIcon, ChevronRightIcon } from '../components/icons';
 import { useNavigate } from 'react-router-dom';
+import BookingResultModal from '../components/booking/BookingResultModal';
 
 // Helper components defined outside to prevent re-renders
 const StepIndicator: React.FC<{ currentStep: number }> = ({ currentStep }) => {
@@ -56,6 +56,17 @@ const BookingPage: React.FC = () => {
     }
     const [foundSlotsByRange, setFoundSlotsByRange] = useState<FoundSlot[]>([]);
     const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+    
+    // --- State for Result Modal ---
+    const [bookingResult, setBookingResult] = useState<{
+        isOpen: boolean;
+        status: 'success' | 'error';
+        message: string;
+    }>({
+        isOpen: false,
+        status: 'success',
+        message: '',
+    });
 
     // --- Memoized values for filtering ---
     const categories = useMemo(() => 
@@ -157,12 +168,39 @@ const BookingPage: React.FC = () => {
         setCurrentStep(4);
     };
 
-    const handleConfirmBooking = () => {
-        alert('¡Cita confirmada! (Simulación)');
-        resetBooking();
-        navigate('/perfil');
+    const handleFinalConfirmBooking = async () => {
+        // Simulate API call with a delay
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Simulate success or failure
+        const isSuccess = Math.random() > 0.2; // 80% success rate
+
+        if (isSuccess) {
+            setBookingResult({
+                isOpen: true,
+                status: 'success',
+                message: 'Tu cita ha sido confirmada correctamente. ¡Te esperamos!'
+            });
+        } else {
+             setBookingResult({
+                isOpen: true,
+                status: 'error',
+                message: 'Error de conexión: No hemos podido procesar tu reserva. Por favor, inténtalo de nuevo.'
+            });
+        }
     };
     
+    const handleCloseResultModal = () => {
+        const status = bookingResult.status;
+        setBookingResult({ isOpen: false, status: 'success', message: '' });
+
+        if (status === 'success') {
+            resetBooking();
+            navigate('/perfil');
+        }
+        // On error, just close the modal, allowing the user to try again from the confirmation step.
+    };
+
     const weekDays = useMemo(() => {
         const startOfWeek = new Date();
         startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay() + 1 + (weekOffset * 7));
@@ -398,13 +436,20 @@ const BookingPage: React.FC = () => {
                             <button onClick={() => setCurrentStep(3)} className="w-full md:w-auto px-6 py-3 border border-gray-300 rounded-lg text-secondary font-semibold hover:bg-gray-100">
                                 Cambiar Hora
                             </button>
-                            <button onClick={handleConfirmBooking} className="w-full md:w-auto flex-1 bg-primary text-white py-3 rounded-lg font-semibold hover:bg-primary-light transition-colors">
+                            <button onClick={handleFinalConfirmBooking} className="w-full md:w-auto flex-1 bg-primary text-white py-3 rounded-lg font-semibold hover:bg-primary-light transition-colors">
                                 Confirmar Reserva
                             </button>
                         </div>
                     </div>
                 )}
             </div>
+
+            <BookingResultModal
+                isOpen={bookingResult.isOpen}
+                onClose={handleCloseResultModal}
+                status={bookingResult.status}
+                message={bookingResult.message}
+            />
         </div>
     );
 };
