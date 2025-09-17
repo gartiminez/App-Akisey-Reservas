@@ -12,13 +12,25 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose }) => {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleRegister = () => {
-    if (fullName && phone && email) {
-        register({ fullName, phone, email });
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.length < 6) {
+        setError('La contraseña debe tener al menos 6 caracteres.');
+        return;
+    }
+    setError('');
+    setLoading(true);
+    try {
+        await register({ fullName, phone, email, password });
         onClose();
-    } else {
-        alert('Por favor, completa todos los campos.');
+    } catch (err: any) {
+        setError(err.message || 'Error al registrar la cuenta.');
+    } finally {
+        setLoading(false);
     }
   };
 
@@ -30,13 +42,16 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose }) => {
         <h2 className="text-2xl font-bold text-center text-secondary mb-2">Crea tu Cuenta</h2>
         <p className="text-center text-light-text mb-6">Es rápido y fácil.</p>
         
-        <div className="space-y-4">
+        {error && <p className="bg-red-100 text-red-700 p-3 rounded-md text-sm mb-4">{error}</p>}
+        
+        <form onSubmit={handleRegister} className="space-y-4">
           <input
             type="text"
             placeholder="Nombre completo"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
+            required
           />
           <input
             type="tel"
@@ -44,6 +59,7 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose }) => {
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
+            required
           />
           <input
             type="email"
@@ -51,14 +67,24 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose }) => {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
+            required
+          />
+           <input
+            type="password"
+            placeholder="Contraseña"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
+            required
           />
           <button
-            onClick={handleRegister}
-            className="w-full bg-primary text-white py-3 rounded-lg font-semibold hover:bg-primary-light transition-transform transform hover:scale-105"
+            type="submit"
+            disabled={loading}
+            className="w-full bg-primary text-white py-3 rounded-lg font-semibold hover:bg-primary-light transition-transform transform hover:scale-105 disabled:bg-gray-400"
           >
-            Registrarse
+            {loading ? 'Creando cuenta...' : 'Registrarse'}
           </button>
-        </div>
+        </form>
 
         <div className="text-center mt-4">
             <button onClick={onClose} className="text-sm text-gray-500 hover:text-secondary">

@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 
 interface LoginModalProps {
@@ -9,10 +9,23 @@ interface LoginModalProps {
 
 const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const { login } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
-    login();
-    onClose();
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      await login({ email, password });
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Error al iniciar sesión.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -21,32 +34,41 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl p-8 max-w-sm w-full">
         <h2 className="text-2xl font-bold text-center text-secondary mb-2">Acceso de Cliente</h2>
-        <p className="text-center text-light-text mb-6">Introduce tu teléfono para recibir un código de acceso.</p>
+        <p className="text-center text-light-text mb-6">Introduce tus credenciales para acceder.</p>
         
-        <div className="space-y-4">
+        {error && <p className="bg-red-100 text-red-700 p-3 rounded-md text-sm mb-4">{error}</p>}
+
+        <form onSubmit={handleLogin} className="space-y-4">
           <input
-            type="tel"
-            placeholder="Número de teléfono"
-            defaultValue="+34600000000"
+            type="email"
+            placeholder="Correo electrónico"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
+            required
+          />
+          <input
+            type="password"
+            placeholder="Contraseña"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
+            required
           />
           <button
-            onClick={handleLogin}
-            className="w-full bg-primary text-white py-3 rounded-lg font-semibold hover:bg-primary-light transition-transform transform hover:scale-105"
+            type="submit"
+            disabled={loading}
+            className="w-full bg-primary text-white py-3 rounded-lg font-semibold hover:bg-primary-light transition-transform transform hover:scale-105 disabled:bg-gray-400"
           >
-            Enviar Código
+            {loading ? 'Accediendo...' : 'Iniciar Sesión'}
           </button>
-        </div>
+        </form>
 
         <div className="text-center mt-4">
             <button onClick={onClose} className="text-sm text-gray-500 hover:text-secondary">
                 Cerrar
             </button>
         </div>
-
-        <p className="text-xs text-gray-400 text-center mt-6">
-            (Esto es una simulación. Haz clic en "Enviar Código" para acceder con un usuario de ejemplo).
-        </p>
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Client } from '../../types';
 
@@ -9,7 +10,7 @@ interface EditProfileFormProps {
 
 const EditProfileForm: React.FC<EditProfileFormProps> = ({ user, onSave, onCancel }) => {
   const [formData, setFormData] = useState({
-    fullName: user.fullName,
+    fullName: user.full_name,
     phone: user.phone,
     email: user.email,
   });
@@ -21,7 +22,6 @@ const EditProfileForm: React.FC<EditProfileFormProps> = ({ user, onSave, onCance
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Simple validation
     if (!formData.fullName || !formData.phone || !formData.email) {
         alert('Por favor, completa todos los campos.');
         return;

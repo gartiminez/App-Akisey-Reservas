@@ -1,12 +1,16 @@
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useBooking } from '../context/BookingContext';
-import { MOCK_SERVICES, MOCK_PROFESSIONALS, getAvailableTimeSlots } from '../data/mockData';
-import { Service, Professional, TimeSlot } from '../types';
+import { Service, Professional, TimeSlot, Appointment } from '../types';
 import { ChevronLeftIcon, ChevronRightIcon } from '../components/icons';
 import { useNavigate } from 'react-router-dom';
 import BookingResultModal from '../components/booking/BookingResultModal';
 import { useAuth } from '../context/AuthContext';
 import LoginOrRegisterPrompt from '../components/auth/LoginOrRegisterPrompt';
+import { supabase } from '../lib/supabaseClient';
+// FIX: Switch to named imports from the main 'date-fns' package to resolve "not callable" errors with sub-path imports.
+import { addMinutes, format, set, startOfDay, endOfDay } from 'date-fns';
+
 
 // Helper components defined outside to prevent re-renders
 const StepIndicator: React.FC<{ currentStep: number }> = ({ currentStep }) => {
@@ -31,64 +35,52 @@ const StepIndicator: React.FC<{ currentStep: number }> = ({ currentStep }) => {
 const BookingPage: React.FC = () => {
     const [currentStep, setCurrentStep] = useState(1);
     const { bookingState, setService, setProfessional, setDateTime, resetBooking } = useBooking();
-    const { isLoggedIn } = useAuth();
+    const { isLoggedIn, user } = useAuth();
     const navigate = useNavigate();
-
     const isEditMode = useMemo(() => !!bookingState.appointmentToEdit, [bookingState.appointmentToEdit]);
     
+    // --- Data state ---
+    const [allServices, setAllServices] = useState<Service[]>([]);
+    const [availableProfessionals, setAvailableProfessionals] = useState<Professional[]>([]);
+
     // --- State for Step 1: Service Selection ---
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('Todos');
 
     // --- State for Step 3: Date & Time Selection ---
-    type SearchMode = 'date' | 'timeRange';
-    const [searchMode, setSearchMode] = useState<SearchMode>('date');
-
-    // State for 'date' search mode
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([]);
+    const [slotsLoading, setSlotsLoading] = useState(false);
     const [weekOffset, setWeekOffset] = useState(0);
 
-    // State for 'timeRange' search mode
-    type TimeRangeKey = 'any' | 'morning' | 'afternoon' | 'custom';
-    const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRangeKey>('any');
-    const [customStartTime, setCustomStartTime] = useState('16:00');
-    const [customEndTime, setCustomEndTime] = useState('18:00');
-
-    interface FoundSlot {
-        date: Date;
-        slots: TimeSlot[];
-    }
-    const [foundSlotsByRange, setFoundSlotsByRange] = useState<FoundSlot[]>([]);
-    const [isLoadingSlots, setIsLoadingSlots] = useState(false);
-    
     // --- State for Result Modal ---
     const [bookingResult, setBookingResult] = useState<{
         isOpen: boolean;
         status: 'success' | 'error';
         message: string;
-    }>({
-        isOpen: false,
-        status: 'success',
-        message: '',
-    });
+    }>({ isOpen: false, status: 'success', message: '' });
+
+    // --- Data fetching effect for services ---
+    useEffect(() => {
+        const fetchServices = async () => {
+            const { data, error } = await supabase.from('services').select('*');
+            if (error) console.error("Error fetching services", error);
+            else setAllServices(data || []);
+        };
+        fetchServices();
+    }, []);
 
     // --- Memoized values for filtering ---
-    const categories = useMemo(() => 
-        ['Todos', ...new Set(MOCK_SERVICES.map(s => s.category))]
-    , []);
-
+    const categories = useMemo(() => ['Todos', ...new Set(allServices.map(s => s.category))], [allServices]);
     const filteredServices = useMemo(() => {
-        return MOCK_SERVICES.filter(service => {
+        return allServices.filter(service => {
         const matchesCategory = selectedCategory === 'Todos' || service.category === selectedCategory;
         const matchesSearch = service.name.toLowerCase().includes(searchTerm.toLowerCase());
         return matchesCategory && matchesSearch;
         });
-    }, [searchTerm, selectedCategory]);
-
+    }, [searchTerm, selectedCategory, allServices]);
 
     // Effect to manage the current step based on the booking state.
-    // It sets the initial step and handles navigation when a service is selected.
     useEffect(() => {
         if (isEditMode) {
             setCurrentStep(3);
@@ -99,76 +91,95 @@ const BookingPage: React.FC = () => {
         }
     }, [isEditMode, bookingState.service]);
 
-    // Effect to sync the local selectedDate with the global booking state's date.
-    // This ensures the calendar displays the correct date, especially in edit mode or when navigating back.
+    // Effect to fetch professionals when a service is selected
     useEffect(() => {
-        setSelectedDate(bookingState.date || new Date());
-    }, [bookingState.date]);
-
-
-    // Effect for 'date' search mode
-    useEffect(() => {
-        if (currentStep === 3 && searchMode === 'date') {
-            const slots = getAvailableTimeSlots(selectedDate, bookingState.professional?.id);
-            setAvailableSlots(slots);
-        }
-    }, [currentStep, searchMode, selectedDate, bookingState.professional]);
-    
-    // Helper to check if a time is within a range for 'timeRange' search mode
-    const isInRange = useCallback((time: string, range: TimeRangeKey): boolean => {
-        const [hour] = time.split(':').map(Number);
-        switch (range) {
-            case 'any':
-                return true;
-            case 'morning':
-                return hour >= 9 && hour < 14;
-            case 'afternoon':
-                return hour >= 15 && hour < 20;
-            case 'custom': {
-                const [startHour] = customStartTime.split(':').map(Number);
-                const [endHour] = customEndTime.split(':').map(Number);
-                return hour >= startHour && hour <= endHour;
-            }
-            default:
-                return false;
-        }
-    }, [customStartTime, customEndTime]);
-
-    // Effect for 'timeRange' search mode: finds next available slots based on range
-    useEffect(() => {
-        if (currentStep === 3 && searchMode === 'timeRange') {
-            setIsLoadingSlots(true);
-            // Simulating a search delay for better UX
-            const searchTimeout = setTimeout(() => {
-                const results: FoundSlot[] = [];
-                const today = new Date();
+        if (bookingState.service) {
+            const fetchProfessionals = async () => {
+                const { data, error } = await supabase
+                    .from('professional_skills')
+                    .select('professionals(*)')
+                    .eq('service_id', bookingState.service!.id);
                 
-                for (let i = 0; i < 30; i++) { // Search next 30 days
-                    const dateToCheck = new Date();
-                    dateToCheck.setDate(today.getDate() + i);
-                    dateToCheck.setHours(0, 0, 0, 0); // Normalize date
-
-                    const slotsForDay = getAvailableTimeSlots(dateToCheck, bookingState.professional?.id);
-                    const availableSlotsInRange = slotsForDay.filter(slot => slot.available && isInRange(slot.time, selectedTimeRange));
-
-                    if (availableSlotsInRange.length > 0) {
-                        results.push({
-                            date: dateToCheck,
-                            slots: availableSlotsInRange,
-                        });
-                    }
-
-                    if (results.length >= 5) { // Stop after finding 5 available days
-                        break;
-                    }
+                if (error) console.error("Error fetching professionals", error);
+                else {
+                    // FIX: The type error indicates that `item.professionals` might be an array, leading to a `Professional[][]`.
+                    // We use `.flat()` to handle this possibility. Chaining `?.` prevents runtime errors if `data` is null.
+                    const professionals = data?.map(item => item.professionals)?.filter(Boolean)?.flat() as Professional[] || [];
+                    setAvailableProfessionals(professionals);
                 }
-                setFoundSlotsByRange(results);
-                setIsLoadingSlots(false);
-            }, 300); // Small delay to show loading state
-            
-            return () => clearTimeout(searchTimeout);
+            };
+            fetchProfessionals();
         }
-    }, [currentStep, searchMode, selectedTimeRange, bookingState.professional, isInRange]);
+    }, [bookingState.service]);
+
+    // Effect to calculate available time slots
+    useEffect(() => {
+        if (currentStep !== 3 || !bookingState.service) return;
+
+        const calculateSlots = async () => {
+            setSlotsLoading(true);
+            setAvailableSlots([]);
+
+            const { service, professional } = bookingState;
+            const serviceDuration = service.duration + service.break_time;
+            
+            // Define working hours
+            const workingHours = [
+                { start: { hour: 9, minute: 0 }, end: { hour: 13, minute: 0 } },
+                { start: { hour: 16, minute: 0 }, end: { hour: 20, minute: 0 } }
+            ];
+
+            // Fetch appointments for the selected professional and date
+            let query = supabase
+                .from('appointments')
+                .select('start_time, end_time')
+                .gte('start_time', startOfDay(selectedDate).toISOString())
+                .lt('end_time', endOfDay(selectedDate).toISOString());
+
+            if (professional) {
+                query = query.eq('professional_id', professional.id);
+            }
+            
+            const { data: existingAppointments, error } = await query;
+            if (error) {
+                console.error("Error fetching appointments:", error);
+                setSlotsLoading(false);
+                return;
+            }
+
+            const bookedSlots = existingAppointments.map(a => ({
+                start: new Date(a.start_time),
+                end: new Date(a.end_time)
+            }));
+
+            // Generate potential slots and check availability
+            const slots: TimeSlot[] = [];
+            workingHours.forEach(period => {
+                let currentTime = set(selectedDate, period.start);
+                const endTime = set(selectedDate, period.end);
+
+                while (addMinutes(currentTime, serviceDuration) <= endTime) {
+                    const slotEnd = addMinutes(currentTime, serviceDuration);
+                    
+                    const isBooked = bookedSlots.some(bookedSlot => 
+                        (currentTime < bookedSlot.end && slotEnd > bookedSlot.start)
+                    );
+
+                    slots.push({
+                        time: format(currentTime, 'HH:mm'),
+                        available: !isBooked,
+                    });
+                    currentTime = addMinutes(currentTime, 15); // Check every 15 mins for a potential start
+                }
+            });
+
+            setAvailableSlots(slots);
+            setSlotsLoading(false);
+        };
+
+        calculateSlots();
+
+    }, [currentStep, selectedDate, bookingState.service, bookingState.professional]);
 
 
     const handleSelectService = (service: Service) => {
@@ -187,36 +198,41 @@ const BookingPage: React.FC = () => {
     };
 
     const handleFinalConfirmBooking = async () => {
-        // Simulate API call with a delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Simulate success or failure
-        const isSuccess = Math.random() > 0.2; // 80% success rate
+        if (!user || !bookingState.service || !bookingState.date || !bookingState.time || !bookingState.professional) {
+            setBookingResult({ isOpen: true, status: 'error', message: 'Faltan datos para la reserva.' });
+            return;
+        }
 
-        if (isSuccess) {
-            setBookingResult({
-                isOpen: true,
-                status: 'success',
-                message: isEditMode ? 'Tu cita ha sido modificada correctamente.' : 'Tu cita ha sido confirmada correctamente. ¡Te esperamos!'
-            });
+        const { service, professional, date, time } = bookingState;
+        const [hour, minute] = time.split(':').map(Number);
+        const startTime = set(date, { hours: hour, minutes: minute, seconds: 0, milliseconds: 0 });
+        const endTime = addMinutes(startTime, service.duration);
+
+        const newAppointment = {
+            client_id: user.id,
+            service_id: service.id,
+            professional_id: professional.id,
+            start_time: startTime.toISOString(),
+            end_time: endTime.toISOString(),
+            status: 'confirmada' as const,
+        };
+
+        const { error } = await supabase.from('appointments').insert(newAppointment);
+        
+        if (error) {
+            setBookingResult({ isOpen: true, status: 'error', message: `Error al crear la cita: ${error.message}` });
         } else {
-             setBookingResult({
-                isOpen: true,
-                status: 'error',
-                message: 'Error de conexión: No hemos podido procesar tu solicitud. Por favor, inténtalo de nuevo.'
-            });
+            setBookingResult({ isOpen: true, status: 'success', message: 'Tu cita ha sido confirmada correctamente. ¡Te esperamos!' });
         }
     };
     
     const handleCloseResultModal = () => {
         const status = bookingResult.status;
         setBookingResult({ isOpen: false, status: 'success', message: '' });
-
         if (status === 'success') {
             resetBooking();
             navigate('/perfil');
         }
-        // On error, just close the modal, allowing the user to try again from the confirmation step.
     };
 
     const weekDays = useMemo(() => {
@@ -229,8 +245,6 @@ const BookingPage: React.FC = () => {
         });
     }, [weekOffset]);
 
-
-    // --- Step 1: Service Selection ---
     const ServiceStep = () => (
         <div className="max-w-4xl mx-auto">
             <h2 className="text-3xl font-bold text-secondary mb-6 text-center">1. Elige un servicio</h2>
@@ -244,15 +258,7 @@ const BookingPage: React.FC = () => {
                 />
                 <div className="flex space-x-3 overflow-x-auto pb-3 -mx-4 px-4">
                     {categories.map(category => (
-                        <button
-                        key={category}
-                        onClick={() => setSelectedCategory(category)}
-                        className={`flex-shrink-0 px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transition-colors duration-200 border-2 ${
-                            selectedCategory === category
-                            ? 'bg-primary text-white border-primary'
-                            : 'bg-white text-secondary border-gray-300 hover:bg-gray-100'
-                        }`}
-                        >
+                        <button key={category} onClick={() => setSelectedCategory(category)} className={`flex-shrink-0 px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transition-colors duration-200 border-2 ${selectedCategory === category ? 'bg-primary text-white border-primary' : 'bg-white text-secondary border-gray-300 hover:bg-gray-100'}`}>
                         {category}
                         </button>
                     ))}
@@ -270,11 +276,7 @@ const BookingPage: React.FC = () => {
         </div>
     );
     
-    // --- Step 2: Professional Selection ---
-    const ProfessionalStep = () => {
-        const availableProfessionals = MOCK_PROFESSIONALS.filter(p => bookingState.service?.professionalIds.includes(p.id));
-
-        return (
+    const ProfessionalStep = () => (
             <div className="max-w-2xl mx-auto">
                 <h2 className="text-3xl font-bold text-secondary mb-6 text-center">2. Elige un profesional</h2>
                 <div className="space-y-4">
@@ -287,9 +289,9 @@ const BookingPage: React.FC = () => {
                     </button>
                     {availableProfessionals.map(prof => (
                         <button key={prof.id} onClick={() => handleSelectProfessional(prof)} className={`w-full flex items-center p-4 rounded-lg shadow transition-all border-2 ${bookingState.professional?.id === prof.id ? 'bg-primary/10 border-primary' : 'bg-white hover:shadow-lg'}`}>
-                            <img src={prof.avatarUrl} alt={prof.name} className="w-16 h-16 rounded-full object-cover mr-4" />
+                            <img src={prof.avatar_url} alt={prof.full_name} className="w-16 h-16 rounded-full object-cover mr-4" />
                             <div>
-                                <h3 className="font-bold text-secondary text-lg">{prof.name}</h3>
+                                <h3 className="font-bold text-secondary text-lg">{prof.full_name}</h3>
                             </div>
                         </button>
                     ))}
@@ -297,169 +299,65 @@ const BookingPage: React.FC = () => {
                  <button onClick={() => setCurrentStep(1)} className="mt-6 text-sm text-light-text hover:underline">Volver a servicios</button>
             </div>
         );
-    };
 
-    // --- Step 3: Date & Time Selection ---
     const DateTimeStep = () => (
         <div className="bg-white rounded-lg shadow-lg p-6 md:p-8 max-w-4xl mx-auto">
             <h2 className="text-3xl font-bold text-secondary mb-6 text-center">3. Elige fecha y hora</h2>
-            
-            {/* Search Mode Tabs */}
-            <div className="flex justify-center border-b mb-6">
-                <button onClick={() => setSearchMode('date')} className={`px-6 py-2 font-semibold ${searchMode === 'date' ? 'border-b-2 border-primary text-primary' : 'text-light-text'}`}>Buscar por Día</button>
-                <button onClick={() => setSearchMode('timeRange')} className={`px-6 py-2 font-semibold ${searchMode === 'timeRange' ? 'border-b-2 border-primary text-primary' : 'text-light-text'}`}>Buscar por Franja</button>
+            <div className="flex items-center justify-between mb-4">
+                <button onClick={() => setWeekOffset(weekOffset - 1)} className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-50" disabled={weekOffset === 0}><ChevronLeftIcon className="w-6 h-6" /></button>
+                <span className="font-semibold text-secondary">
+                    {weekDays[0].toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+                </span>
+                <button onClick={() => setWeekOffset(weekOffset + 1)} className="p-2 rounded-full hover:bg-gray-100"><ChevronRightIcon className="w-6 h-6" /></button>
             </div>
-
-            {searchMode === 'date' ? (
-                <>
-                    {/* Week Navigator */}
-                    <div className="flex items-center justify-between mb-4">
-                        <button onClick={() => setWeekOffset(weekOffset - 1)} className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-50" disabled={weekOffset === 0}><ChevronLeftIcon className="w-6 h-6" /></button>
-                        <span className="font-semibold text-secondary">
-                            {weekDays[0].toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
-                        </span>
-                        <button onClick={() => setWeekOffset(weekOffset + 1)} className="p-2 rounded-full hover:bg-gray-100"><ChevronRightIcon className="w-6 h-6" /></button>
-                    </div>
-                    {/* Day Selector */}
-                    <div className="grid grid-cols-7 gap-2 mb-6">
-                        {weekDays.map(day => (
-                            <button 
-                                key={day.toISOString()} 
-                                onClick={() => setSelectedDate(day)}
-                                className={`p-2 rounded-lg text-center transition ${selectedDate.toDateString() === day.toDateString() ? 'bg-primary text-white' : 'hover:bg-gray-100'}`}
-                            >
-                                <span className="text-xs uppercase">{day.toLocaleDateString('es-ES', { weekday: 'short' })}</span>
-                                <span className="block font-bold text-lg">{day.getDate()}</span>
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* Available Slots */}
-                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
-                        {availableSlots.map(slot => (
-                            <button 
-                                key={slot.time}
-                                onClick={() => handleSelectDateTime(selectedDate, slot.time)}
-                                disabled={!slot.available}
-                                className="px-4 py-3 rounded-lg font-semibold transition disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed bg-secondary text-white hover:bg-primary"
-                            >
-                                {slot.time}
-                            </button>
-                        ))}
-                    </div>
-                </>
-            ) : (
-                <>
-                    {/* Time Range Selector */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                        {(['any', 'morning', 'afternoon', 'custom'] as TimeRangeKey[]).map(range => (
-                            <button key={range} onClick={() => setSelectedTimeRange(range)} className={`px-4 py-3 rounded-lg font-semibold transition ${selectedTimeRange === range ? 'bg-primary text-white' : 'bg-gray-200 text-secondary'}`}>
-                                {{'any': 'Cualquier hora', 'morning': 'Mañana', 'afternoon': 'Tarde', 'custom': 'Personalizado'}[range]}
-                            </button>
-                        ))}
-                    </div>
-                    {selectedTimeRange === 'custom' && (
-                        <div className="flex items-center justify-center gap-4 p-4 bg-gray-100 rounded-lg mb-4">
-                            <label>Desde: <input type="time" value={customStartTime} onChange={e => setCustomStartTime(e.target.value)} className="p-1 rounded border"/></label>
-                            <label>Hasta: <input type="time" value={customEndTime} onChange={e => setCustomEndTime(e.target.value)} className="p-1 rounded border"/></label>
-                        </div>
-                    )}
-
-                    {/* Found Slots */}
-                    {isLoadingSlots && <div className="text-center p-8">Buscando huecos disponibles...</div>}
-                    {!isLoadingSlots && (
-                         <div className="space-y-4 max-h-80 overflow-y-auto">
-                             {foundSlotsByRange.length > 0 ? foundSlotsByRange.map(({ date, slots }) => (
-                                 <div key={date.toISOString()}>
-                                     <h4 className="font-bold text-secondary mb-2">{date.toLocaleDateString('es-ES', { weekday: 'long', month: 'long', day: 'numeric' })}</h4>
-                                     <div className="flex flex-wrap gap-3">
-                                         {slots.map(slot => (
-                                             <button key={slot.time} onClick={() => handleSelectDateTime(date, slot.time)} className="px-4 py-2 rounded-lg font-semibold transition bg-secondary text-white hover:bg-primary">
-                                                 {slot.time}
-                                             </button>
-                                         ))}
-                                     </div>
-                                 </div>
-                             )) : <p className="text-center text-light-text p-8">No se encontraron huecos en los próximos 30 días con esos criterios.</p>}
-                         </div>
-                    )}
-                </>
+            <div className="grid grid-cols-7 gap-2 mb-6">
+                {weekDays.map(day => (
+                    <button key={day.toISOString()} onClick={() => setSelectedDate(day)} className={`p-2 rounded-lg text-center transition ${selectedDate.toDateString() === day.toDateString() ? 'bg-primary text-white' : 'hover:bg-gray-100'}`}>
+                        <span className="text-xs uppercase">{day.toLocaleDateString('es-ES', { weekday: 'short' })}</span>
+                        <span className="block font-bold text-lg">{day.getDate()}</span>
+                    </button>
+                ))}
+            </div>
+            {slotsLoading ? <p className="text-center">Buscando horas disponibles...</p> : (
+                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                    {availableSlots.filter(s => s.available).map(slot => (
+                        <button key={slot.time} onClick={() => handleSelectDateTime(selectedDate, slot.time)} className="px-4 py-3 rounded-lg font-semibold transition bg-secondary text-white hover:bg-primary">
+                            {slot.time}
+                        </button>
+                    ))}
+                 </div>
             )}
-
-            <div className="mt-8 flex justify-center">
+             <div className="mt-8 flex justify-center">
                  <button onClick={() => setCurrentStep(2)} className="text-sm text-light-text hover:underline">Volver a profesionales</button>
             </div>
         </div>
     );
     
-    // --- Step 4: Confirmation ---
     const ConfirmationStep = () => {
         const { service, professional, date, time } = bookingState;
 
-        const handleStartOver = () => {
-            resetBooking();
-            setCurrentStep(1); 
-        };
-
-        const handleCancelEdit = () => {
-            resetBooking();
-            navigate('/perfil');
-        };
-
-
-        if (!isLoggedIn && !isEditMode) {
-            return <LoginOrRegisterPrompt />;
-        }
-
+        if (!isLoggedIn && !isEditMode) return <LoginOrRegisterPrompt />;
         if (!service || !date || !time) return <p>Faltan datos de la reserva.</p>;
 
-        const professionalName = professional?.name || 'Cualquier profesional';
+        const professionalName = professional?.full_name || 'Cualquier profesional';
         const formattedDate = date.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         
         return (
             <div className="bg-white rounded-lg shadow-lg p-6 md:p-8 max-w-2xl mx-auto">
-                <h2 className="text-3xl font-bold text-secondary mb-6 text-center">
-                   {isEditMode ? '4. Confirma tu modificación' : '4. Confirma tu reserva'}
-                </h2>
+                <h2 className="text-3xl font-bold text-secondary mb-6 text-center">4. Confirma tu reserva</h2>
                 <div className="space-y-4 p-4 bg-light-bg rounded-lg border border-gray-200">
-                    <div>
-                        <h3 className="font-semibold text-sm text-light-text">Servicio</h3>
-                        <p className="text-lg text-secondary">{service.name}</p>
-                    </div>
-                     <div>
-                        <h3 className="font-semibold text-sm text-light-text">Profesional</h3>
-                        <p className="text-lg text-secondary">{professionalName}</p>
-                    </div>
-                    <div>
-                        <h3 className="font-semibold text-sm text-light-text">Fecha y Hora</h3>
-                        <p className="text-lg text-secondary">{formattedDate} a las {time}</p>
-                    </div>
-                     <div>
-                        <h3 className="font-semibold text-sm text-light-text">Total</h3>
-                        <p className="text-xl font-bold text-primary">{service.price}€</p>
-                    </div>
+                    <div><h3 className="font-semibold text-sm text-light-text">Servicio</h3><p className="text-lg text-secondary">{service.name}</p></div>
+                    <div><h3 className="font-semibold text-sm text-light-text">Profesional</h3><p className="text-lg text-secondary">{professionalName}</p></div>
+                    <div><h3 className="font-semibold text-sm text-light-text">Fecha y Hora</h3><p className="text-lg text-secondary">{formattedDate} a las {time}</p></div>
+                    <div><h3 className="font-semibold text-sm text-light-text">Total</h3><p className="text-xl font-bold text-primary">{service.price}€</p></div>
                 </div>
 
                 <div className="mt-8 flex flex-col gap-4">
-                    <div className="flex flex-col sm:flex-row gap-4">
-                        <button
-                            onClick={() => setCurrentStep(3)}
-                            className="w-full sm:w-1/2 order-2 sm:order-1 bg-white text-secondary py-3 px-4 rounded-lg font-semibold border border-gray-300 hover:bg-gray-100 transition-colors"
-                        >
-                            {isEditMode ? 'Cambiar Fecha/Hora' : 'Cambiar Hora'}
-                        </button>
-                        <button
-                            onClick={handleFinalConfirmBooking}
-                            className="w-full sm:w-1/2 order-1 sm:order-2 bg-primary text-white py-3 px-4 rounded-lg font-semibold hover:bg-primary-light transition-transform transform hover:scale-105"
-                        >
-                            {isEditMode ? 'Confirmar Modificación' : 'Confirmar Reserva'}
-                        </button>
-                    </div>
-                    <button
-                        onClick={isEditMode ? handleCancelEdit : handleStartOver}
-                        className="w-full text-center text-sm text-red-600 font-semibold py-3 px-4 rounded-lg hover:bg-red-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                    >
-                        {isEditMode ? 'Cancelar Modificación' : 'Anular y empezar de nuevo'}
+                     <button onClick={handleFinalConfirmBooking} className="w-full bg-primary text-white py-3 px-4 rounded-lg font-semibold hover:bg-primary-light transition-transform transform hover:scale-105">
+                        Confirmar Reserva
+                    </button>
+                    <button onClick={() => setCurrentStep(3)} className="w-full bg-white text-secondary py-3 px-4 rounded-lg font-semibold border border-gray-300 hover:bg-gray-100 transition-colors">
+                        Cambiar Hora
                     </button>
                 </div>
             </div>
@@ -479,24 +377,12 @@ const BookingPage: React.FC = () => {
     return (
         <div className="container mx-auto px-4 py-8">
             <div className="max-w-4xl mx-auto">
-                <h1 className="text-4xl font-extrabold text-secondary tracking-tight text-center mb-4">
-                     {isEditMode ? 'Modificar Cita' : 'Reservar una Cita'}
-                </h1>
-                 <p className="text-center text-lg text-light-text mb-8">
-                    {isEditMode 
-                        ? 'Selecciona una nueva fecha u hora para tu cita.' 
-                        : 'Sigue los pasos para reservar tu tratamiento.'
-                    }
-                </p>
-                {!isEditMode && <StepIndicator currentStep={currentStep} />}
+                <h1 className="text-4xl font-extrabold text-secondary tracking-tight text-center mb-4">Reservar una Cita</h1>
+                 <p className="text-center text-lg text-light-text mb-8">Sigue los pasos para reservar tu tratamiento.</p>
+                <StepIndicator currentStep={currentStep} />
                 <div className="mt-8">{renderStep()}</div>
             </div>
-            <BookingResultModal 
-                isOpen={bookingResult.isOpen}
-                onClose={handleCloseResultModal}
-                status={bookingResult.status}
-                message={bookingResult.message}
-            />
+            <BookingResultModal isOpen={bookingResult.isOpen} onClose={handleCloseResultModal} status={bookingResult.status} message={bookingResult.message} />
         </div>
     );
 };

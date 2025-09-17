@@ -1,6 +1,5 @@
 import React, { createContext, useState, useContext, ReactNode, useCallback } from 'react';
 import { Service, Professional, Appointment } from '../types';
-import { MOCK_SERVICES, MOCK_PROFESSIONALS } from '../data/mockData';
 
 interface BookingState {
     service: Service | null;
@@ -45,22 +44,20 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, []);
 
   const setAppointmentToEdit = useCallback((appointment: Appointment | null) => {
-    if (appointment) {
-        const service = MOCK_SERVICES.find(s => s.id === appointment.serviceId);
-        const professional = MOCK_PROFESSIONALS.find(p => p.id === appointment.professionalId);
-        if (service) {
-            setBookingState({
-                service,
-                professional: professional || null,
-                date: appointment.start,
-                time: appointment.start.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
-                appointmentToEdit: appointment,
-            });
-        }
+    if (appointment && appointment.services && appointment.professionals) {
+        const startDate = new Date(appointment.start_time);
+        setBookingState({
+            service: appointment.services,
+            professional: appointment.professionals,
+            date: startDate,
+            time: startDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+            appointmentToEdit: appointment,
+        });
     } else {
         setBookingState(prev => ({ ...prev, appointmentToEdit: null }));
     }
 }, []);
+
 
   const resetBooking = useCallback(() => {
     setBookingState(initialState);

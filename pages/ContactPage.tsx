@@ -10,13 +10,6 @@ const ContactPage: React.FC = () => {
       </div>
 
       <div className="bg-white rounded-lg shadow-xl p-6 md:p-10 space-y-8">
-        <div>
-            <h2 className="text-2xl font-bold text-secondary mb-4">Sobre BellezaSana</h2>
-            <p className="text-light-text leading-relaxed">
-                BellezaSana es tu santuario personal en el corazón de la ciudad, un lugar donde la belleza, el bienestar y la salud se encuentran. Nuestro equipo de profesionales altamente cualificados se dedica a ofrecerte una experiencia única y personalizada, utilizando los productos más innovadores y las técnicas más avanzadas. Creemos en realzar tu belleza natural y en proporcionarte un momento de paz y desconexión de la rutina diaria. Ven a conocernos y déjate cuidar.
-            </p>
-        </div>
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <a 
                 href="tel:+34910000000" 
@@ -46,6 +39,13 @@ const ContactPage: React.FC = () => {
         <div>
             <h2 className="text-2xl font-bold text-secondary mb-4">Ubicación</h2>
              <p className="text-light-text">Calle Ficticia 123, 28080 Madrid</p>
+        </div>
+
+        <div>
+            <h2 className="text-2xl font-bold text-secondary mb-4">Sobre BellezaSana</h2>
+            <p className="text-light-text leading-relaxed">
+                BellezaSana es tu santuario personal en el corazón de la ciudad, un lugar donde la belleza, el bienestar y la salud se encuentran. Nuestro equipo de profesionales altamente cualificados se dedica a ofrecerte una experiencia única y personalizada, utilizando los productos más innovadores y las técnicas más avanzadas. Creemos en realzar tu belleza natural y en proporcionarte un momento de paz y desconexión de la rutina diaria. Ven a conocernos y déjate cuidar.
+            </p>
         </div>
 
       </div>

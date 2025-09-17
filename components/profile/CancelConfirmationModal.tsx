@@ -1,6 +1,6 @@
+
 import React from 'react';
 import { Appointment } from '../../types';
-import { MOCK_SERVICES, MOCK_PROFESSIONALS } from '../../data/mockData';
 import { ExclamationTriangleIcon } from '../icons';
 
 interface CancelConfirmationModalProps {
@@ -13,8 +13,9 @@ interface CancelConfirmationModalProps {
 const CancelConfirmationModal: React.FC<CancelConfirmationModalProps> = ({ isOpen, onClose, onConfirm, appointment }) => {
   if (!isOpen || !appointment) return null;
 
-  const service = MOCK_SERVICES.find(s => s.id === appointment.serviceId);
-  const professional = MOCK_PROFESSIONALS.find(p => p.id === appointment.professionalId);
+  const service = appointment.services;
+  const professional = appointment.professionals;
+  const startDate = new Date(appointment.start_time);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true" aria-labelledby="cancel-dialog-title">
@@ -28,8 +29,8 @@ const CancelConfirmationModal: React.FC<CancelConfirmationModalProps> = ({ isOpe
         {service && (
             <div className="space-y-3 p-4 bg-light-bg rounded-lg border border-gray-200 mb-6 text-sm">
                 <p><span className="font-semibold text-light-text">Servicio:</span> <span className="text-secondary">{service.name}</span></p>
-                {professional && <p><span className="font-semibold text-light-text">Profesional:</span> <span className="text-secondary">{professional.name}</span></p>}
-                <p><span className="font-semibold text-light-text">Fecha:</span> <span className="text-secondary">{appointment.start.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} a las {appointment.start.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span></p>
+                {professional && <p><span className="font-semibold text-light-text">Profesional:</span> <span className="text-secondary">{professional.full_name}</span></p>}
+                <p><span className="font-semibold text-light-text">Fecha:</span> <span className="text-secondary">{startDate.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} a las {startDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span></p>
             </div>
         )}
 

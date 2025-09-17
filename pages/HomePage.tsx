@@ -1,15 +1,46 @@
-
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { MOCK_PROMOTIONS, MOCK_SERVICES } from '../data/mockData';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useBooking } from '../context/BookingContext';
-import { useNavigate } from 'react-router-dom';
-import { Service } from '../types';
+import { Service, Promotion } from '../types';
+import { supabase } from '../lib/supabaseClient';
 
 
 const HomePage: React.FC = () => {
     const { setService } = useBooking();
     const navigate = useNavigate();
+    const [promotions, setPromotions] = useState<Promotion[]>([]);
+    const [services, setServices] = useState<Service[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const { data: promoData, error: promoError } = await supabase
+                    .from('promotions')
+                    .select('*')
+                    .eq('is_active', true)
+                    .limit(2);
+                if (promoError) throw promoError;
+                setPromotions(promoData || []);
+
+                // Fetching first 3 services as "popular"
+                const { data: serviceData, error: serviceError } = await supabase
+                    .from('services')
+                    .select('*')
+                    .limit(3);
+                if (serviceError) throw serviceError;
+                setServices(serviceData || []);
+
+            } catch (error) {
+                console.error("Error fetching homepage data:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, []);
+
 
     const handleBookService = (service: Service) => {
         setService(service);
@@ -36,28 +67,31 @@ const HomePage: React.FC = () => {
       {/* Promotions Section */}
       <section className="container mx-auto px-4">
         <h2 className="text-3xl font-bold text-center text-secondary mb-8">Promociones Destacadas</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {MOCK_PROMOTIONS.map((promo) => (
-            <div key={promo.id} className="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col md:flex-row">
-                <img src={promo.imageUrl} alt={promo.title} className="w-full md:w-1/3 h-48 md:h-full object-cover" />
-                <div className="p-6 flex flex-col justify-center">
-                    <h3 className="text-2xl font-bold text-secondary">{promo.title}</h3>
-                    <p className="mt-2 text-light-text">{promo.description}</p>
-                    <div className="mt-4 flex items-baseline space-x-2">
-                        <span className="text-3xl font-bold text-primary">{promo.promoPrice}€</span>
-                        <span className="text-lg text-gray-400 line-through">{promo.originalPrice}€</span>
+        {loading ? <p className="text-center">Cargando promociones...</p> : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {promotions.map((promo) => (
+                <div key={promo.id} className="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col md:flex-row">
+                    <img src={promo.image_url} alt={promo.title} className="w-full md:w-1/3 h-48 md:h-full object-cover" />
+                    <div className="p-6 flex flex-col justify-center">
+                        <h3 className="text-2xl font-bold text-secondary">{promo.title}</h3>
+                        <p className="mt-2 text-light-text">{promo.description}</p>
+                        <div className="mt-4 flex items-baseline space-x-2">
+                            <span className="text-3xl font-bold text-primary">{promo.promo_price}€</span>
+                            {promo.original_price && <span className="text-lg text-gray-400 line-through">{promo.original_price}€</span>}
+                        </div>
                     </div>
                 </div>
+            ))}
             </div>
-          ))}
-        </div>
+        )}
       </section>
 
       {/* Popular Services Section */}
       <section className="container mx-auto px-4">
         <h2 className="text-3xl font-bold text-center text-secondary mb-8">Nuestros Servicios Populares</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-            {MOCK_SERVICES.slice(0, 3).map((service) => (
+        {loading ? <p className="text-center">Cargando servicios...</p> : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+            {services.map((service) => (
                 <div key={service.id} className="bg-white rounded-lg shadow-lg p-6 flex flex-col">
                     <h3 className="text-xl font-bold text-secondary">{service.name}</h3>
                     <p className="mt-2 text-light-text flex-grow">{service.description}</p>
@@ -73,7 +107,8 @@ const HomePage: React.FC = () => {
                     </button>
                 </div>
             ))}
-        </div>
+            </div>
+        )}
         <div className="text-center mt-8">
             <Link to="/servicios" className="text-primary font-semibold hover:underline">
                 Ver todos los servicios
